@@ -9,8 +9,10 @@ const projectRoot = path.resolve(__dirname, '..', '..');
 const appConfig = {
   projectRoot,
   browser: {
-    // Use the real Chrome profile by default so the session matches your normal signed-in browser.
-    userDataDir: process.env.MEESHO_CHROME_USER_DATA_DIR
+    // Keep automation state in a separate local profile so it can run even when your normal Chrome is open.
+    userDataDir: process.env.MEESHO_AUTOMATION_USER_DATA_DIR
+      || path.resolve(projectRoot, '.auth', 'meesho-automation-session'),
+    chromeUserDataDir: process.env.MEESHO_CHROME_USER_DATA_DIR
       || path.join(process.env.LOCALAPPDATA || os.homedir(), 'Google', 'Chrome', 'User Data'),
     profileDirectory: process.env.MEESHO_CHROME_PROFILE_DIRECTORY || 'Default',
     cdpUrl: process.env.MEESHO_CHROME_CDP_URL || 'http://127.0.0.1:9222',

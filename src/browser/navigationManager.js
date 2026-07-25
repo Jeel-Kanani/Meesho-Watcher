@@ -140,6 +140,68 @@ class NavigationManager {
     }
   }
 
+  /**
+   * Collect up to `maxCount` unique product URLs from the shop page in a single pass,
+   * then navigate to each one and scroll it like a real user would.
+   */
+  async browseAllProducts(maxCount) {
+    const count = maxCount || this.appConfig.navigation.productCount || 5;
+
+    // ── Step 1: open shop and harvest product URLs ──────────────────────────
+    console.log(`\nOpening shop to collect up to ${count} product URLs...`);
+    await this.page.goto(this.appConfig.app.shopUrl, {
+      waitUntil: 'domcontentloaded',
+      timeout: 60000,
+    });
+    await this.dismissCommonInterruptions();
+
+    // Wait for at least one product link to appear
+    const firstLink = this.page.locator('a[href*="/p/"]').first();
+    await firstLink.waitFor({ state: 'visible', timeout: 30000 });
+
+    // Grab all product links visible on the page right now
+    const allLinks = this.page.locator('a[href*="/p/"]');
+    const totalFound = await allLinks.count();
+    const takeCount = Math.min(totalFound, count);
+    console.log(`Found ${totalFound} product links on the shop page. Will visit ${takeCount}.`);
+
+    // Extract hrefs while we are still on the shop page
+    const productUrls = [];
+    const shopPageUrl = this.page.url();
+    for (let i = 0; i < takeCount; i++) {
+      const href = await allLinks.nth(i).getAttribute('href').catch(() => null);
+      if (href) {
+        const full = new URL(href, shopPageUrl).href;
+        // Deduplicate — same product can appear multiple times via different anchors
+        if (!productUrls.includes(full)) productUrls.push(full);
+      }
+    }
+    console.log(`Collected ${productUrls.length} unique product URLs.\n`);
+
+    // ── Step 2: visit each product one by one ───────────────────────────────
+    for (let idx = 0; idx < productUrls.length; idx++) {
+      const url = productUrls[idx];
+      console.log(`--- Product ${idx + 1} / ${productUrls.length} ---`);
+      console.log(`Navigating to: ${url}`);
+
+      try {
+        await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        console.log(`Loaded: ${this.page.url()}`);
+
+        await this.scrollProductImagesLikeHuman(this.page);
+
+        // Short human-like pause between products (1.5 – 3 s)
+        const pauseMs = 1500 + Math.floor(Math.random() * 1500);
+        console.log(`Pausing ${pauseMs}ms before next product...\n`);
+        await this.page.waitForTimeout(pauseMs);
+      } catch (err) {
+        console.warn(`  Skipping product ${idx + 1} due to error: ${err.message}`);
+      }
+    }
+
+    console.log(`\nFinished browsing ${productUrls.length} products from the shop.`);
+  }
+
   async scrollProductImagesLikeHuman(targetPage) {
     const page = targetPage || this.page;
     console.log('Inspecting product images and scrolling...');
@@ -283,6 +345,11 @@ async function scrollProductImagesLikeHuman(page, appConfig) {
   return navigationManager.scrollProductImagesLikeHuman(page);
 }
 
+async function browseAllProducts(page, appConfig, maxCount) {
+  const navigationManager = new NavigationManager(page, appConfig);
+  return navigationManager.browseAllProducts(maxCount);
+}
+
 module.exports = {
   NavigationManager,
   openHomePage,
@@ -290,4 +357,5 @@ module.exports = {
   openTargetCollection,
   openShopAndFirstProduct,
   scrollProductImagesLikeHuman,
+  browseAllProducts,
 };

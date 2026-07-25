@@ -29,6 +29,8 @@ const appConfig = {
     // Keep the default search target configurable so future milestones can change behavior without code edits.
     searchQuery: process.env.MEESHO_SEARCH_QUERY || 'saree',
     targetCollection: process.env.MEESHO_TARGET_COLLECTION || 'Kurti, Saree & Lehenga',
+    // Number of products to visit per run — increase for more thorough browsing simulation.
+    productCount: parseInt(process.env.MEESHO_PRODUCT_COUNT, 10) || 5,
   },
 };
 

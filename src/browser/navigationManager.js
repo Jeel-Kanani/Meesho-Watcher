@@ -268,6 +268,7 @@ class NavigationManager {
         console.log(`Loaded: ${this.page.url()}`);
 
         await this.scrollProductImagesLikeHuman(this.page);
+        await this.simulateBuyNow(this.page);
 
         // Mark as visited immediately so progress is saved even on partial runs
         sessionVisited.push(url);
@@ -415,7 +416,94 @@ class NavigationManager {
 
     return collectionIndicators;
   }
+
+  // ── Buy Now simulation ──────────────────────────────────────────────────
+  // Clicks Buy Now → review page → Continue → payment page → stops.
+  // No order is ever placed — the next product’s goto() abandons payment page.
+  async simulateBuyNow(page) {
+    try {
+      await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' })).catch(() => {});
+      await page.waitForTimeout(300);
+
+      const buyNowBtn = page.locator('button:has-text("Buy Now"), button:has-text("Buy now")').first();
+      if (!await buyNowBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+        console.log('  Buy Now button not found — skipping checkout step.');
+        return;
+      }
+
+      await buyNowBtn.scrollIntoViewIfNeeded().catch(() => {});
+      await page.waitForTimeout(200);
+      await buyNowBtn.click();
+      console.log('  Clicked Buy Now.');
+
+      // Wait for navigation (Buy Now always navigates away from the product page)
+      await page.waitForTimeout(3000);
+      const landedUrl = page.url();
+
+      // If Meesho redirected to login, the session is not authenticated
+      if (landedUrl.includes('/auth')) {
+        console.log('  Buy Now redirected to login — session not logged in. Skipping.');
+        return;
+      }
+
+      if (!landedUrl.includes('/mcheckout/review')) {
+        console.log(`  Buy Now: unexpected page (${landedUrl.split('?')[0]}). Skipping.`);
+        return;
+      }
+
+      await page.waitForLoadState('domcontentloaded').catch(() => {});
+      await page.waitForTimeout(1000);
+      console.log('  On review page. (“Continue” will not deduct money)');
+
+      // Click Continue → payment page; money is NOT deducted here
+      const continueBtn = page.locator('button:has-text("Continue")').first();
+      if (await continueBtn.isVisible({ timeout: 6000 }).catch(() => false)) {
+        await continueBtn.click();
+        await page.waitForTimeout(2500);
+        console.log('  Reached payment page. Stopping here (no order placed).');
+      } else {
+        console.log('  Continue button not found on review page.');
+      }
+      // Next product’s goto() navigates away from payment page safely.
+    } catch (err) {
+      if (err.message.includes('Target page, context or browser has been closed')) throw err;
+      console.warn(`  Buy Now flow issue: ${err.message.split('\n')[0]}`);
+    }
+  }
+
+  // ── Login check ─────────────────────────────────────────────────────────
+  // Navigate directly to the Meesho /auth page.
+  // • If already logged in, Meesho immediately redirects away → done.
+  // • If not logged in, /auth stays open; user fills phone + OTP in the
+  //   visible browser window; script resumes once URL leaves /auth.
+  async ensureLoggedIn() {
+    const loginUrl = 'https://www.meesho.com/auth?redirect=https%3A%2F%2Fwww.meesho.com%2F&source=profile&entry=header&screen=HP';
+
+    console.log('\nChecking Meesho login status...');
+    await this.page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await this.page.waitForTimeout(2000); // allow Meesho to redirect if already logged in
+
+    const currentUrl = this.page.url();
+    if (!currentUrl.includes('/auth')) {
+      console.log('Already logged in. ✓\n');
+      return;
+    }
+
+    // Still on /auth → not logged in
+    console.log('\n⚠️  Not logged in to Meesho.');
+    console.log('   Enter your phone number in the browser and complete the OTP.');
+    console.log('   Script will continue automatically once you are logged in (up to 3 minutes).\n');
+
+    // Wait until URL leaves /auth (login completed)
+    await this.page.waitForFunction(
+      () => !window.location.pathname.startsWith('/auth'),
+      { timeout: 180000 },
+    ).catch(() => console.log('   Login wait timed out — continuing anyway.'));
+
+    console.log('Logged in successfully. ✓\n');
+  }
 }
+
 
 async function openHomePage(page, appConfig) {
   const navigationManager = new NavigationManager(page, appConfig);
@@ -447,6 +535,11 @@ async function browseAllProducts(page, appConfig, maxCount) {
   return navigationManager.browseAllProducts(maxCount);
 }
 
+async function ensureLoggedIn(page, appConfig) {
+  const navigationManager = new NavigationManager(page, appConfig);
+  return navigationManager.ensureLoggedIn();
+}
+
 module.exports = {
   NavigationManager,
   openHomePage,
@@ -455,4 +548,5 @@ module.exports = {
   openShopAndFirstProduct,
   scrollProductImagesLikeHuman,
   browseAllProducts,
+  ensureLoggedIn,
 };

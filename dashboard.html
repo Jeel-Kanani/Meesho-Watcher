@@ -490,59 +490,139 @@
     }
 
     .table-wrapper {
-      max-height: 320px;
+      max-height: 380px;
       overflow-y: auto;
-      border: 1px solid var(--card-border);
-      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.4);
+      backdrop-filter: blur(12px);
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 12px;
+      font-size: 13px;
       text-align: left;
     }
 
     th {
-      background: rgba(255, 255, 255, 0.06);
-      color: var(--text-muted);
-      padding: 12px 14px;
-      font-weight: 600;
+      background: rgba(15, 23, 42, 0.95);
+      color: #94a3b8;
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      padding: 14px 16px;
+      font-weight: 700;
       position: sticky;
       top: 0;
-      backdrop-filter: blur(8px);
+      z-index: 10;
+      border-bottom: 2px solid rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(10px);
     }
 
     td {
-      padding: 12px 14px;
-      border-top: 1px solid var(--card-border);
-      color: #e5e7eb;
+      padding: 12px 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.04);
+      color: #e2e8f0;
+      vertical-align: middle;
+    }
+
+    tr {
+      transition: background 0.15s ease;
     }
 
     tr:hover {
-      background: rgba(255, 255, 255, 0.02);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    tr.row-visited {
+      background: rgba(16, 185, 129, 0.03);
     }
 
     .badge {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      padding: 4px 10px;
-      border-radius: 12px;
+      gap: 5px;
+      padding: 5px 12px;
+      border-radius: 20px;
       font-size: 11px;
-      font-weight: 600;
+      font-weight: 700;
+      letter-spacing: 0.3px;
     }
 
     .badge-visited {
-      background: rgba(16, 185, 129, 0.15);
-      color: #6ee7b7;
-      border: 1px solid rgba(16, 185, 129, 0.3);
+      background: rgba(16, 185, 129, 0.18);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.15);
     }
 
     .badge-pending {
-      background: rgba(245, 158, 11, 0.15);
-      color: #fde68a;
-      border: 1px solid rgba(245, 158, 11, 0.3);
+      background: rgba(245, 158, 11, 0.18);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+    }
+
+    .btn-table-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      text-decoration: none;
+      border: 1px solid var(--card-border);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-table-action.open-btn {
+      background: rgba(56, 189, 248, 0.1);
+      color: #38bdf8;
+      border-color: rgba(56, 189, 248, 0.3);
+    }
+
+    .btn-table-action.open-btn:hover {
+      background: rgba(56, 189, 248, 0.25);
+      color: #ffffff;
+    }
+
+    .btn-table-action.jump-btn {
+      background: rgba(236, 72, 153, 0.1);
+      color: #f472b6;
+      border-color: rgba(236, 72, 153, 0.3);
+    }
+
+    .btn-table-action.jump-btn:hover {
+      background: rgba(236, 72, 153, 0.25);
+      color: #ffffff;
+    }
+
+    .completion-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.3) 100%);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      border-radius: 14px;
+      padding: 16px 20px;
+      box-shadow: 0 8px 25px rgba(16, 185, 129, 0.25);
+      margin-bottom: 12px;
+    }
+
+    .completion-banner-text h4 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+      color: #34d399;
+    }
+
+    .completion-banner-text p {
+      margin: 4px 0 0 0;
+      font-size: 12px;
+      color: #cbd5e1;
     }
 
     /* Terminal Log */
@@ -750,35 +830,49 @@
           <!-- Shop Selector Dropdown for separate shop sheets -->
           <div style="display:flex; align-items:center; gap:8px;">
             <label style="font-size:12px; color:var(--text-muted); font-weight:500;">Select Shop Sheet:</label>
-            <select id="sheetShopSelect" style="padding:4px 10px; font-size:12px;" onchange="onShopSheetChange()">
+            <select id="sheetShopSelect" style="padding:5px 12px; font-size:12px; font-weight:600; cursor:pointer;" onchange="onShopSheetChange()">
               <option value="">All Shops</option>
             </select>
           </div>
         </div>
 
         <div style="display:flex; gap:12px; align-items:center;">
-          <input type="text" id="sheetSearch" placeholder="Search products..." style="padding:6px 12px; font-size:12px;" oninput="renderSheetTable()">
+          <input type="text" id="sheetSearch" placeholder="🔍 Search products..." style="padding:6px 12px; font-size:12px;" oninput="renderSheetTable()">
           <div class="filter-tabs">
             <button class="tab-btn active" id="tabAll" onclick="setSheetFilter('all')">All (<span id="cntAll">0</span>)</button>
-            <button class="tab-btn" id="tabVisited" onclick="setSheetFilter('visited')">Visited (<span id="cntVisited">0</span>)</button>
-            <button class="tab-btn" id="tabPending" onclick="setSheetFilter('pending')">Pending (<span id="cntPending">0</span>)</button>
+            <button class="tab-btn" id="tabVisited" onclick="setSheetFilter('visited')">✓ Watched (<span id="cntVisited">0</span>)</button>
+            <button class="tab-btn" id="tabPending" onclick="setSheetFilter('pending')">⏳ Pending (<span id="cntPending">0</span>)</button>
           </div>
         </div>
+      </div>
+
+      <!-- Completion Banner Alert -->
+      <div id="completionBanner" class="completion-banner" style="display:none;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span style="font-size:28px;">🏆</span>
+          <div class="completion-banner-text">
+            <h4>🎉 Shop Exploration Complete!</h4>
+            <p id="completionMsg">All products for this shop have been successfully visited and verified.</p>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="startRun('fresh')" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); font-size:12px; padding:8px 14px;">
+          🔄 Scan Again (Fresh Start)
+        </button>
       </div>
 
       <div class="table-wrapper">
         <table>
           <thead>
             <tr>
-              <th style="width: 50px;">#</th>
+              <th style="width: 55px;">#</th>
               <th>Product Title</th>
-              <th>Product Code</th>
-              <th style="width: 110px;">Status</th>
-              <th style="width: 140px;">Actions</th>
+              <th style="width: 140px;">Product Code</th>
+              <th style="width: 125px;">Status</th>
+              <th style="width: 150px;">Actions</th>
             </tr>
           </thead>
           <tbody id="sheetTableBody">
-            <tr><td colspan="5" style="text-align:center; color:var(--text-muted);">Loading product catalog sheet...</td></tr>
+            <tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding: 24px;">Loading product catalog sheet...</td></tr>
           </tbody>
         </table>
       </div>
@@ -825,11 +919,26 @@
         const shopSelect = document.getElementById('sheetShopSelect');
         const availableShops = (data.shops && data.shops.length > 0) ? data.shops : (currentConfig.shopUrls || []);
         
-        shopSelect.innerHTML = '<option value="">All Shops</option>' + 
-          availableShops.map((sUrl, i) => {
-            const shopName = sUrl.split('/')[3] ? sUrl.split('/')[3].split('?')[0] : `Shop ${i + 1}`;
-            return `<option value="${sUrl}" ${sUrl === selectedShopFilter ? 'selected' : ''}>Shop ${i + 1}: ${shopName}</option>`;
-          }).join('');
+        let opts = '<option value="">All Shops</option>';
+        availableShops.forEach((sUrl, i) => {
+          const shopName = sUrl.split('/')[3] ? sUrl.split('/')[3].split('?')[0] : `Shop ${i + 1}`;
+          opts += `<option value="${sUrl}" ${sUrl === selectedShopFilter ? 'selected' : ''}>Shop ${i + 1}: ${shopName}</option>`;
+        });
+        shopSelect.innerHTML = opts;
+
+        // Completion Banner Alert logic
+        const banner = document.getElementById('completionBanner');
+        if (banner) {
+          if (data.isComplete || (data.total > 0 && data.pendingCount === 0)) {
+            banner.style.display = 'flex';
+            const shopLabel = selectedShopFilter 
+              ? (selectedShopFilter.split('/')[3] ? selectedShopFilter.split('/')[3].split('?')[0] : 'Selected Shop')
+              : 'All Shops';
+            document.getElementById('completionMsg').innerText = `🎉 All ${data.total} products for "${shopLabel}" have been visited & verified cleanly!`;
+          } else {
+            banner.style.display = 'none';
+          }
+        }
 
         renderSheetTable();
         calculateETA();
@@ -848,8 +957,8 @@
       document.getElementById('imgPauseVal').innerText = (currentConfig.imagePauseBase || 500) + ' ms';
       document.getElementById('prodPauseSlider').value = currentConfig.productPauseBase || 1500;
       document.getElementById('prodPauseVal').innerText = (currentConfig.productPauseBase || 1500) + ' ms';
-      document.getElementById('buyNowPauseSlider').value = currentConfig.buyNowPauseBase || 800;
-      document.getElementById('buyNowPauseVal').innerText = (currentConfig.buyNowPauseBase || 800) + ' ms';
+      document.getElementById('buyNowPauseSlider').value = currentConfig.buyNowPauseBase || 1500;
+      document.getElementById('buyNowPauseVal').innerText = (currentConfig.buyNowPauseBase || 1500) + ' ms';
 
       setExecutionModeUI(currentConfig.executionMode || 'serial');
 
@@ -921,6 +1030,18 @@
 
       await saveConfig();
       alert('🚀 TURBO PEAK MODE ACTIVATED! (Max Speed + Multi-Tab Parallel Enabled)');
+    }
+
+    async function resetSpeedConfig() {
+      currentConfig.speedLevel = 5;
+      currentConfig.imagePauseBase = 500;
+      currentConfig.productPauseBase = 1500;
+      currentConfig.buyNowPauseBase = 1500;
+      currentConfig.executionMode = 'serial';
+
+      renderConfig();
+      await saveConfig();
+      alert('🔄 Speed & Automation Profile Reset to Default (Level 5 Normal Ideal)');
     }
 
     function calculateETA() {
@@ -1003,22 +1124,33 @@
       });
 
       if (filtered.length === 0) {
-        body.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding: 20px;">No product links match the selected filter.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding: 24px; font-size:13px;">No product items match the current search or filter.</td></tr>`;
         return;
       }
 
       body.innerHTML = filtered.map((item) => `
-        <tr>
-          <td><strong>${item.index}</strong></td>
-          <td><div style="font-weight:600; max-width:340px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.title}</div></td>
-          <td><span style="font-family:'JetBrains Mono'; color:var(--accent-cyan);">${item.pid || 'N/A'}</span></td>
+        <tr class="${item.visited ? 'row-visited' : ''}">
+          <td><strong style="color: var(--text-muted); font-size:11px;">#${item.index}</strong></td>
+          <td>
+            <div style="font-weight:600; max-width:360px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#f8fafc;" title="${item.title}">
+              ${item.title}
+            </div>
+          </td>
+          <td>
+            <span style="font-family:'JetBrains Mono', monospace; font-size:11px; color:#38bdf8; background:rgba(56,189,248,0.1); padding:2px 8px; border-radius:6px; border:1px solid rgba(56,189,248,0.2);">
+              ${item.pid || 'N/A'}
+            </span>
+          </td>
           <td>
             ${item.visited 
-              ? '<span class="badge badge-visited">✓ Visited</span>' 
+              ? '<span class="badge badge-visited">✓ Watched</span>' 
               : '<span class="badge badge-pending">⏳ Pending</span>'}
           </td>
           <td>
-            <button class="btn btn-secondary" style="padding:4px 10px; font-size:11px;" onclick="jumpToProduct(${item.index})">🎯 Jump & Start</button>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <a href="${item.url}" target="_blank" class="btn-table-action open-btn" title="Open product page">🔗 View</a>
+              <button class="btn-table-action jump-btn" onclick="jumpToProduct(${item.index})" title="Jump to product">🎯 Jump</button>
+            </div>
           </td>
         </tr>
       `).join('');

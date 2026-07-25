@@ -21,7 +21,7 @@ const DEFAULT_CONFIG = {
   speedLevel: 5,
   imagePauseBase: 500,
   productPauseBase: 1500,
-  buyNowPauseBase: 3000,
+  buyNowPauseBase: 1500,
   jumpToIndex: 1,
 };
 
@@ -79,42 +79,69 @@ app.post('/api/config', (req, res) => {
 
 app.get('/api/stats', (_req, res) => res.json(readJSON(STATS_PATH, {})));
 
+function normalizeUrl(url) {
+  if (!url) return '';
+  try {
+    const u = new URL(url);
+    return u.origin + u.pathname;
+  } catch {
+    return url.split('?')[0];
+  }
+}
+
 app.get('/api/products', (req, res) => {
   const config = readJSON(CONFIG_PATH, DEFAULT_CONFIG);
   const collected = readJSON(COLLECTED_PATH, { urls: [], shops: [] });
   const progress = readJSON(PROGRESS_PATH, { visitedUrls: [] });
-  const visitedSet = new Set(progress.visitedUrls || []);
+
+  const rawVisited = progress.visitedUrls || [];
+  const visitedSet = new Set(rawVisited);
+  const visitedNormalized = new Set(rawVisited.map(normalizeUrl));
 
   const configShopUrls = config.shopUrls || [];
   const collectedShopUrls = (collected.shops || []).map((s) => s.shopUrl);
-
-  // Union of configured shops and collected shops so newly added shops appear immediately
   const shopsList = Array.from(new Set([...configShopUrls, ...collectedShopUrls]));
 
   const filterShopUrl = req.query.shopUrl || '';
 
-  let targetUrls = collected.urls || [];
+  let targetUrls = [];
   if (filterShopUrl && filterShopUrl !== 'ALL') {
+    const normFilter = normalizeUrl(filterShopUrl);
     if (collected.shops && collected.shops.length > 0) {
-      const foundShop = collected.shops.find((s) => s.shopUrl === filterShopUrl);
+      const foundShop = collected.shops.find((s) => s.shopUrl === filterShopUrl || normalizeUrl(s.shopUrl) === normFilter);
       if (foundShop) {
-        targetUrls = foundShop.urls;
+        targetUrls = foundShop.urls || [];
       }
     }
+    if (targetUrls.length === 0) {
+      const shopSlug = filterShopUrl.split('/')[3] ? filterShopUrl.split('/')[3].split('?')[0] : '';
+      if (shopSlug) {
+        targetUrls = (collected.urls || []).filter((u) => u.includes(shopSlug));
+      }
+    }
+  } else {
+    targetUrls = collected.urls || [];
   }
 
   const items = targetUrls.map((url, i) => {
     const meta = parseProductMeta(url, i);
-    return { ...meta, visited: visitedSet.has(url) };
+    const norm = normalizeUrl(url);
+    const visited = visitedSet.has(url) || visitedNormalized.has(norm);
+    return { ...meta, visited };
   });
+
+  const total = items.length;
+  const visitedCount = items.filter((x) => x.visited).length;
+  const pendingCount = items.filter((x) => !x.visited).length;
 
   res.json({
     items,
     shops: shopsList,
     selectedShop: filterShopUrl,
-    total: items.length,
-    visitedCount: items.filter((x) => x.visited).length,
-    pendingCount: items.filter((x) => !x.visited).length,
+    total,
+    visitedCount,
+    pendingCount,
+    isComplete: total > 0 && pendingCount === 0,
   });
 });
 
@@ -139,8 +166,16 @@ app.post('/api/start', (req, res) => {
   ensureDir(CONTROL_PATH);
   fs.writeFileSync(CONTROL_PATH, JSON.stringify({ isPaused: false }, null, 2));
 
-  if (activeProcesses.length > 0)
+  if (activeProcesses.length > 0) {
+    const ctrl = readJSON(CONTROL_PATH, { isPaused: false });
+    if (ctrl.isPaused) {
+      fs.writeFileSync(CONTROL_PATH, JSON.stringify({ isPaused: false }, null, 2));
+      broadcast({ type: 'log', text: '\n▶  Resume command sent.\n' });
+      broadcast({ type: 'control', isPaused: false });
+      return res.json({ ok: true, message: 'Resumed automation' });
+    }
     return res.json({ ok: false, error: 'Automation is already running' });
+  }
 
   const config = readJSON(CONFIG_PATH, DEFAULT_CONFIG);
   const { mode = 'resume', jumpToIndex = 1 } = req.body || {};
@@ -151,6 +186,18 @@ app.post('/api/start', (req, res) => {
   if (mode === 'fresh') {
     ensureDir(PROGRESS_PATH);
     fs.writeFileSync(PROGRESS_PATH, JSON.stringify({ visitedUrls: [] }, null, 2));
+    ensureDir(STATS_PATH);
+    fs.writeFileSync(STATS_PATH, JSON.stringify({
+      totalProducts: 0,
+      visitedCount: 0,
+      imagesClicked: 0,
+      buyNowCount: 0,
+      continueCount: 0,
+      speedLevel: config.speedLevel || 5,
+      isRunning: false,
+      isPaused: false,
+      currentProductUrl: ''
+    }, null, 2));
   } else if (mode === 'jump' && jumpToIndex > 1) {
     const collected = readJSON(COLLECTED_PATH, { urls: [] });
     if (collected.urls && collected.urls.length >= jumpToIndex - 1) {

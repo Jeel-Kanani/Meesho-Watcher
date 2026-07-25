@@ -1,14 +1,13 @@
 {
-  "totalProducts": 151,
-  "visitedCount": 7,
-  "imagesClicked": 1894,
-  "buyNowCount": 288,
-  "continueCount": 6,
+  "totalProducts": 0,
+  "visitedCount": 0,
+  "imagesClicked": 762,
+  "buyNowCount": 7,
+  "continueCount": 104,
   "speedLevel": 5,
-  "startTime": "2026-07-25T11:03:44.231Z",
-  "lastUpdateTime": "2026-07-25T11:03:44.238Z",
-  "currentProductUrl": "https://www.meesho.com/1-packetportable-sneaker-and-shoe-cleaning-wipes-quick-stain-and-dirt-removal-disposable-footwear-cleaner-kit80-pcs/p/fx01nx?ms=2&source=Meri+Shop",
+  "startTime": "2026-07-25T12:27:51.272Z",
+  "lastUpdateTime": "2026-07-25T12:41:42.681Z",
+  "currentProductUrl": "",
   "isRunning": false,
-  "isPaused": false,
-  "currentProductIndex": 8
+  "isPaused": false
 }

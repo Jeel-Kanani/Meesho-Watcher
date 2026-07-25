@@ -165,7 +165,7 @@ class NavigationManager {
       speedLevel: 5,
       imagePauseBase: 500,
       productPauseBase: 1500,
-      buyNowPauseBase: 3000,
+      buyNowPauseBase: 1500,
     };
   }
 
@@ -178,6 +178,12 @@ class NavigationManager {
     } else {
       return 1.0 - ((clamped - 5) / 5) * 0.75;
     }
+  }
+
+  // Get current speed multiplier from stored configuration dynamically
+  getCurrentSpeedMult() {
+    const dashCfg = this.loadDashboardConfig();
+    return this.getSpeedMultiplier(dashCfg.speedLevel || 5);
   }
 
   updateStats(partial) {
@@ -437,6 +443,8 @@ class NavigationManager {
         sessionVisited.push(url);
         this.saveProgress(sessionVisited);
 
+        const dashCfg = this.loadDashboardConfig();
+        const speedMult = this.getCurrentSpeedMult();
         const basePause = dashCfg.productPauseBase || 1500;
         const pauseMs = Math.round((basePause + Math.floor(Math.random() * 1500)) * speedMult);
         await targetPage.waitForTimeout(pauseMs);
@@ -502,6 +510,9 @@ class NavigationManager {
       totalProducts: allUrls.length,
       visitedCount: visited.length,
       speedLevel: dashCfg.speedLevel || 5,
+      imagesClicked: 0,
+      buyNowCount: 0,
+      continueCount: 0,
       isRunning: true,
     });
 
@@ -543,8 +554,10 @@ class NavigationManager {
 
         this.updateStats({ visitedCount: sessionVisited.length });
 
-        const basePause = dashCfg.productPauseBase || 1500;
-        const pauseMs = Math.round((basePause + Math.floor(Math.random() * 1500)) * speedMult);
+        const currentDashCfg = this.loadDashboardConfig();
+        const currentSpeedMult = this.getCurrentSpeedMult();
+        const basePause = currentDashCfg.productPauseBase || 1500;
+        const pauseMs = Math.round((basePause + Math.floor(Math.random() * 1500)) * currentSpeedMult);
         console.log(`Pausing ${pauseMs}ms before next product...\n`);
         await this.page.waitForTimeout(pauseMs);
       } catch (err) {
@@ -563,9 +576,11 @@ class NavigationManager {
 
   async scrollProductImagesLikeHuman(targetPage) {
     const page = targetPage || this.page;
+    const dashCfg = this.loadDashboardConfig();
+    const speedMult = this.getCurrentSpeedMult();
 
     await page.waitForLoadState('domcontentloaded').catch(() => {});
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(Math.round(400 * speedMult));
 
     // ── Step 1: find thumbnail images by their actual rendered size ───────────
     // Thumbnails on Meesho product pages are small images (40-130px) in the
@@ -598,6 +613,7 @@ class NavigationManager {
     if (thumbCoords.length > 0) {
       console.log(`Clicking through ${thumbCoords.length} product images...`);
       for (let i = 0; i < thumbCoords.length; i++) {
+        await this.checkPauseState(page);
         const { x, y } = thumbCoords[i];
         try {
           await page.mouse.click(x, y);
@@ -608,7 +624,7 @@ class NavigationManager {
           }
           // Wait for the main image to visibly update
           const imgPause = (dashCfg && dashCfg.imagePauseBase) || 500;
-          await page.waitForTimeout(Math.round((imgPause + Math.floor(Math.random() * 300)) * (this.speedMult || 1)));
+          await page.waitForTimeout(Math.round((imgPause + Math.floor(Math.random() * 300)) * speedMult));
         } catch (e) {
           // ignore individual click failures
         }
@@ -618,19 +634,20 @@ class NavigationManager {
     }
 
     // ── Step 3: scroll the product detail section ─────────────────────────────
+    await this.checkPauseState(page);
     console.log('Scrolling product details...');
     for (let s = 0; s < 4; s++) {
       await page.evaluate(() => {
         window.scrollBy({ top: 300, behavior: 'smooth' });
       }).catch(() => {});
-      await page.waitForTimeout(Math.round(280 * (this.speedMult || 1)));
+      await page.waitForTimeout(Math.round(280 * speedMult));
     }
 
     // Scroll back to top
     await page.evaluate(() => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }).catch(() => {});
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(Math.round(200 * speedMult));
 
     console.log('Product viewing complete.');
   }
@@ -699,15 +716,16 @@ class NavigationManager {
   async simulateBuyNow(page) {
     try {
       const dashCfg = this.loadDashboardConfig();
-      const speedMult = this.speedMult || 1;
-      const buyNowBase = (dashCfg && dashCfg.buyNowPauseBase) || 1200;
+      const speedMult = this.getCurrentSpeedMult();
+      const buyNowBase = (dashCfg && dashCfg.buyNowPauseBase) || 1500;
 
       await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' })).catch(() => {});
       // Polite pause before clicking Buy Now
       await page.waitForTimeout(Math.round(400 * speedMult));
 
+      await this.checkPauseState(page);
       const buyNowBtn = page.locator('button:has-text("Buy Now"), button:has-text("Buy now")').first();
-      if (!await buyNowBtn.isVisible({ timeout: Math.round(4000 * speedMult) }).catch(() => false)) {
+      if (!await buyNowBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
         console.log('  Buy Now button not found — skipping checkout step.');
         return;
       }
@@ -737,11 +755,12 @@ class NavigationManager {
       }
 
       // Smooth pause on review page before clicking Continue
-      await page.waitForTimeout(Math.round(750 * speedMult));
+      await page.waitForTimeout(Math.round(500 * speedMult));
+      await this.checkPauseState(page);
       console.log('  On review page. Clicking Continue...');
 
       const continueBtn = page.locator('button:has-text("Continue")').first();
-      if (await continueBtn.isVisible({ timeout: Math.round(4000 * speedMult) }).catch(() => false)) {
+      if (await continueBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
         await continueBtn.click();
         console.log('  Clicked Continue.');
         if (this.statsData) {

@@ -4,9 +4,9 @@
     "https://www.meesho.com/CJMENTERPRISE?ms=2"
   ],
   "speedLevel": 5,
-  "imagePauseBase": 200,
+  "imagePauseBase": 500,
   "productPauseBase": 1500,
-  "buyNowPauseBase": 3000,
+  "buyNowPauseBase": 1500,
   "executionMode": "parallel",
   "jumpToIndex": 1
 }

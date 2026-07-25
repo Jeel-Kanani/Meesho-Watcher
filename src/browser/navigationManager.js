@@ -291,61 +291,71 @@ class NavigationManager {
 
   async scrollProductImagesLikeHuman(targetPage) {
     const page = targetPage || this.page;
-    console.log('Inspecting product images and scrolling...');
 
     await page.waitForLoadState('domcontentloaded').catch(() => {});
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
 
-    const imageSelectors = [
-      'img[src*="meesho.com"]',
-      'picture img',
-      '[class*="ProductImage"] img',
-      'div[class*="Thumbnail"] img',
-    ];
+    // ── Step 1: find thumbnail images by their actual rendered size ───────────
+    // Thumbnails on Meesho product pages are small images (40-130px) in the
+    // upper portion of the page. We measure their real bounding rects via JS
+    // so we click exactly where the element is — no hardcoded coordinates.
+    const thumbCoords = await page.evaluate(() => {
+      const imgs = [...document.querySelectorAll('img')];
+      return imgs
+        .filter((img) => {
+          const r = img.getBoundingClientRect();
+          return (
+            r.width >= 40 && r.width <= 130
+            && r.height >= 40 && r.height <= 130
+            && r.top >= 0 && r.top < 1200
+            && r.left >= 0
+            && img.src && (img.src.includes('meesho') || img.src.includes('cdninstashop'))
+          );
+        })
+        .slice(0, 8) // click up to 8 thumbnails
+        .map((img) => {
+          const r = img.getBoundingClientRect();
+          return {
+            x: Math.round(r.left + r.width / 2),
+            y: Math.round(r.top + r.height / 2),
+          };
+        });
+    }).catch(() => []);
 
-    let thumbnails = null;
-    for (const selector of imageSelectors) {
-      const found = page.locator(selector);
-      const count = await found.count().catch(() => 0);
-      if (count > 1) {
-        thumbnails = found;
-        break;
-      }
-    }
-
-    const count = thumbnails ? await thumbnails.count().catch(() => 0) : 0;
-    console.log(`Found ${count} product images.`);
-
-    if (count > 0) {
-      const maxThumbnails = Math.min(count, 6);
-      for (let i = 0; i < maxThumbnails; i++) {
+    // ── Step 2: click each thumbnail so the main image visibly changes ────────
+    if (thumbCoords.length > 0) {
+      console.log(`Clicking through ${thumbCoords.length} product images...`);
+      for (let i = 0; i < thumbCoords.length; i++) {
+        const { x, y } = thumbCoords[i];
         try {
-          const thumb = thumbnails.nth(i);
-          if (await thumb.isVisible()) {
-            await thumb.hover({ force: true }).catch(() => {});
-            await page.waitForTimeout(150);
-          }
+          await page.mouse.click(x, y);
+          console.log(`  Image ${i + 1}/${thumbCoords.length} clicked`);
+          // Wait for the main image to visibly update
+          await page.waitForTimeout(500 + Math.floor(Math.random() * 300));
         } catch (e) {
-          // Ignore minor hover errors
+          // ignore individual click failures
         }
       }
+    } else {
+      console.log('No thumbnail images found on this product page.');
     }
 
-    console.log('Fast scrolling product details...');
-    const totalSteps = 3;
-    for (let step = 1; step <= totalSteps; step++) {
+    // ── Step 3: scroll the product detail section ─────────────────────────────
+    console.log('Scrolling product details...');
+    for (let s = 0; s < 4; s++) {
       await page.evaluate(() => {
-        window.scrollBy({ top: 350, behavior: 'smooth' });
+        window.scrollBy({ top: 300, behavior: 'smooth' });
       }).catch(() => {});
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(280);
     }
 
+    // Scroll back to top
     await page.evaluate(() => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }).catch(() => {});
-    await page.waitForTimeout(150);
+    await page.waitForTimeout(200);
 
-    console.log('Product image inspection and scroll complete.');
+    console.log('Product viewing complete.');
   }
 
   async searchProducts(searchQuery) {

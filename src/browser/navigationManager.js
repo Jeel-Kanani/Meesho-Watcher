@@ -140,48 +140,127 @@ class NavigationManager {
     }
   }
 
+  // ── Progress helpers (resume support) ─────────────────────────────────────
+
+  get progressFilePath() {
+    return path.join(this.appConfig.projectRoot, 'logs', 'progress.json');
+  }
+
+  loadProgress() {
+    try {
+      if (fs.existsSync(this.progressFilePath)) {
+        const raw = fs.readFileSync(this.progressFilePath, 'utf8');
+        const data = JSON.parse(raw);
+        return Array.isArray(data.visitedUrls) ? data.visitedUrls : [];
+      }
+    } catch (e) {
+      console.warn('Could not read progress file — starting fresh.');
+    }
+    return [];
+  }
+
+  saveProgress(visitedUrls) {
+    const logsDir = path.join(this.appConfig.projectRoot, 'logs');
+    fs.mkdirSync(logsDir, { recursive: true });
+    fs.writeFileSync(
+      this.progressFilePath,
+      JSON.stringify({ visitedUrls, totalVisited: visitedUrls.length, lastRun: new Date().toISOString() }, null, 2),
+    );
+  }
+
+  // ── Pagination helper: collect ALL own-shop product URLs across pages ──────
+
+  async collectShopProductUrls(maxCount) {
+    const shopLinkSelector = 'a[href*="/p/"][href*="source=Meri"]';
+    const baseShopUrl = this.appConfig.app.shopUrl; // e.g. meesho.com/CJMENTERPRISE?ms=2
+    const productUrls = [];
+    let pageNum = 1;
+
+    console.log(`\nScanning shop pages to collect up to ${maxCount} product URLs...`);
+
+    while (productUrls.length < maxCount) {
+      // Meesho shop pagination: append &page=N  (page 1 keeps the original URL)
+      const pageUrl = pageNum === 1 ? baseShopUrl : `${baseShopUrl}&page=${pageNum}`;
+      console.log(`  Shop page ${pageNum}: ${pageUrl}`);
+
+      await this.page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      if (pageNum === 1) await this.dismissCommonInterruptions();
+
+      // Wait up to 15 s for own-shop products; if none appear, we've passed the last page
+      try {
+        await this.page.locator(shopLinkSelector).first().waitFor({ state: 'visible', timeout: 15000 });
+      } catch {
+        console.log(`  No own-shop products on page ${pageNum}. Reached end of shop.`);
+        break;
+      }
+
+      const allLinks = this.page.locator(shopLinkSelector);
+      const foundOnPage = await allLinks.count();
+      const pageBase = this.page.url();
+
+      let addedOnPage = 0;
+      for (let i = 0; i < foundOnPage && productUrls.length < maxCount; i++) {
+        const href = await allLinks.nth(i).getAttribute('href').catch(() => null);
+        if (href) {
+          const full = new URL(href, pageBase).href;
+          if (!productUrls.includes(full)) {
+            productUrls.push(full);
+            addedOnPage++;
+          }
+        }
+      }
+
+      console.log(`  → ${addedOnPage} new URLs added (page total: ${foundOnPage}). Running total: ${productUrls.length}`);
+
+      // Fewer than 20 products on this page means it's the last page
+      if (foundOnPage < 20) {
+        console.log('  Reached last page of shop.');
+        break;
+      }
+
+      pageNum++;
+      // Small polite pause between shop page loads
+      await this.page.waitForTimeout(600 + Math.floor(Math.random() * 400));
+    }
+
+    console.log(`Collected ${productUrls.length} unique own-shop product URLs.\n`);
+    return productUrls;
+  }
+
   /**
-   * Collect up to `maxCount` unique product URLs from the shop page in a single pass,
-   * then navigate to each one and scroll it like a real user would.
+   * Walk every page of the shop, collect own-shop product URLs, then visit each
+   * one with human-like scrolling.
+   *
+   * Resume support: already-visited URLs are stored in logs/progress.json.
+   * If the script is stopped mid-run, the next run skips products already seen.
    */
   async browseAllProducts(maxCount) {
     const count = maxCount || this.appConfig.navigation.productCount || 5;
 
-    // ── Step 1: open shop and harvest product URLs ──────────────────────────
-    console.log(`\nOpening shop to collect up to ${count} product URLs...`);
-    await this.page.goto(this.appConfig.app.shopUrl, {
-      waitUntil: 'domcontentloaded',
-      timeout: 60000,
-    });
-    await this.dismissCommonInterruptions();
+    // ── Step 1: collect all shop product URLs (paginated) ─────────────────────
+    const allUrls = await this.collectShopProductUrls(count);
 
-    // Wait for at least one product link to appear
-    const firstLink = this.page.locator('a[href*="/p/"]').first();
-    await firstLink.waitFor({ state: 'visible', timeout: 30000 });
+    // ── Step 2: load previous progress and filter out already-visited URLs ────
+    const visited = this.loadProgress();
+    const pending = allUrls.filter((u) => !visited.includes(u));
 
-    // Grab all product links visible on the page right now
-    const allLinks = this.page.locator('a[href*="/p/"]');
-    const totalFound = await allLinks.count();
-    const takeCount = Math.min(totalFound, count);
-    console.log(`Found ${totalFound} product links on the shop page. Will visit ${takeCount}.`);
-
-    // Extract hrefs while we are still on the shop page
-    const productUrls = [];
-    const shopPageUrl = this.page.url();
-    for (let i = 0; i < takeCount; i++) {
-      const href = await allLinks.nth(i).getAttribute('href').catch(() => null);
-      if (href) {
-        const full = new URL(href, shopPageUrl).href;
-        // Deduplicate — same product can appear multiple times via different anchors
-        if (!productUrls.includes(full)) productUrls.push(full);
-      }
+    if (visited.length > 0) {
+      console.log(`Resume: ${visited.length} already visited, ${pending.length} remaining.\n`);
     }
-    console.log(`Collected ${productUrls.length} unique product URLs.\n`);
 
-    // ── Step 2: visit each product one by one ───────────────────────────────
-    for (let idx = 0; idx < productUrls.length; idx++) {
-      const url = productUrls[idx];
-      console.log(`--- Product ${idx + 1} / ${productUrls.length} ---`);
+    if (pending.length === 0) {
+      console.log('All products have been visited. Resetting progress for a fresh run.');
+      this.saveProgress([]);
+      return;
+    }
+
+    // ── Step 3: visit each pending product ────────────────────────────────────
+    const sessionVisited = [...visited];
+
+    for (let idx = 0; idx < pending.length; idx++) {
+      const url = pending[idx];
+      const overallNum = visited.length + idx + 1;
+      console.log(`--- Product ${overallNum} / ${allUrls.length} (this session: ${idx + 1}/${pending.length}) ---`);
       console.log(`Navigating to: ${url}`);
 
       try {
@@ -190,16 +269,24 @@ class NavigationManager {
 
         await this.scrollProductImagesLikeHuman(this.page);
 
-        // Short human-like pause between products (1.5 – 3 s)
+        // Mark as visited immediately so progress is saved even on partial runs
+        sessionVisited.push(url);
+        this.saveProgress(sessionVisited);
+
+        // Human-like pause between products (1.5 – 3 s)
         const pauseMs = 1500 + Math.floor(Math.random() * 1500);
         console.log(`Pausing ${pauseMs}ms before next product...\n`);
         await this.page.waitForTimeout(pauseMs);
       } catch (err) {
-        console.warn(`  Skipping product ${idx + 1} due to error: ${err.message}`);
+        if (err.message.includes('Target page, context or browser has been closed')) {
+          console.log('\nChrome was closed. Progress saved. Run again to resume.');
+          return;
+        }
+        console.warn(`  Skipping product ${overallNum} due to error: ${err.message.split('\n')[0]}`);
       }
     }
 
-    console.log(`\nFinished browsing ${productUrls.length} products from the shop.`);
+    console.log(`\nFinished browsing all ${sessionVisited.length} products from the shop.`);
   }
 
   async scrollProductImagesLikeHuman(targetPage) {

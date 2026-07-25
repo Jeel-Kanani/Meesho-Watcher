@@ -98,6 +98,107 @@ class NavigationManager {
     }
   }
 
+  async openShopAndFirstProduct() {
+    try {
+      console.log('Opening the Meesho shop...');
+      await this.page.goto(this.appConfig.app.shopUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000,
+      });
+      await this.dismissCommonInterruptions();
+
+      console.log('Waiting for a product in the shop...');
+      const productLink = this.page.locator('a[href*="/p/"]').first();
+      await productLink.waitFor({ state: 'visible', timeout: 30000 });
+
+      // Extract the raw href directly from the DOM — this gives the exact full product URL
+      // with no truncation (Next.js router corruption only happens when clicking, not here)
+      const rawHref = await productLink.getAttribute('href');
+      if (!rawHref) throw new Error('Could not find a product link on the shop page.');
+
+      const fullProductUrl = new URL(rawHref, this.page.url()).href;
+      console.log(`Product URL found: ${fullProductUrl}`);
+
+      // Navigate directly — real Chrome (no bot flags) means Akamai allows direct goto()
+      // This completely avoids the Next.js router URL truncation bug from clicks
+      await this.page.goto(fullProductUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000,
+      });
+
+      console.log(`Product page loaded: ${this.page.url()}`);
+      return this.page;
+    } catch (error) {
+      try {
+        const errorScreenshot = this.saveScreenshot('error-shop');
+        await this.page.screenshot({ path: errorScreenshot, fullPage: true });
+        console.log(`Saved failure screenshot to: ${errorScreenshot}`);
+      } catch (screenshotError) {
+        console.error('Failed to take failure screenshot:', screenshotError);
+      }
+      throw error;
+    }
+  }
+
+  async scrollProductImagesLikeHuman(targetPage) {
+    const page = targetPage || this.page;
+    console.log('Inspecting product images and scrolling...');
+
+    await page.waitForLoadState('domcontentloaded').catch(() => {});
+    await page.waitForTimeout(300);
+
+    const imageSelectors = [
+      'img[src*="meesho.com"]',
+      'picture img',
+      '[class*="ProductImage"] img',
+      'div[class*="Thumbnail"] img',
+    ];
+
+    let thumbnails = null;
+    for (const selector of imageSelectors) {
+      const found = page.locator(selector);
+      const count = await found.count().catch(() => 0);
+      if (count > 1) {
+        thumbnails = found;
+        break;
+      }
+    }
+
+    const count = thumbnails ? await thumbnails.count().catch(() => 0) : 0;
+    console.log(`Found ${count} product images.`);
+
+    if (count > 0) {
+      const maxThumbnails = Math.min(count, 6);
+      for (let i = 0; i < maxThumbnails; i++) {
+        try {
+          const thumb = thumbnails.nth(i);
+          if (await thumb.isVisible()) {
+            await thumb.hover({ force: true }).catch(() => {});
+            await page.waitForTimeout(150);
+          }
+        } catch (e) {
+          // Ignore minor hover errors
+        }
+      }
+    }
+
+    console.log('Fast scrolling product details...');
+    const totalSteps = 3;
+    for (let step = 1; step <= totalSteps; step++) {
+      await page.evaluate(() => {
+        window.scrollBy({ top: 350, behavior: 'smooth' });
+      }).catch(() => {});
+      await page.waitForTimeout(200);
+    }
+
+    await page.evaluate(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }).catch(() => {});
+    await page.waitForTimeout(150);
+
+    console.log('Product image inspection and scroll complete.');
+  }
+
   async searchProducts(searchQuery) {
     console.log(`Searching for products using query: ${searchQuery}`);
     await this.waitForHomeReady();
@@ -172,4 +273,21 @@ async function openTargetCollection(page, appConfig, targetName) {
   return navigationManager.openTargetCollection(targetName);
 }
 
-module.exports = { NavigationManager, openHomePage, searchProducts, openTargetCollection };
+async function openShopAndFirstProduct(page, appConfig) {
+  const navigationManager = new NavigationManager(page, appConfig);
+  return navigationManager.openShopAndFirstProduct();
+}
+
+async function scrollProductImagesLikeHuman(page, appConfig) {
+  const navigationManager = new NavigationManager(page, appConfig);
+  return navigationManager.scrollProductImagesLikeHuman(page);
+}
+
+module.exports = {
+  NavigationManager,
+  openHomePage,
+  searchProducts,
+  openTargetCollection,
+  openShopAndFirstProduct,
+  scrollProductImagesLikeHuman,
+};

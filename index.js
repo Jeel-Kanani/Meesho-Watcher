@@ -1,20 +1,21 @@
 const { appConfig } = require('./src/config/appConfig');
-const { spawn } = require('child_process');
+const { launchPersistentBrowser } = require('./src/browser/browserManager');
+const { openShopAndFirstProduct, scrollProductImagesLikeHuman } = require('./src/browser/navigationManager');
 
 async function main() {
-  console.log('Opening Meesho in the default browser...');
+  console.log('Starting the Meesho automation browser...');
+  console.log(`Profile path: ${appConfig.browser.userDataDir}\n`);
 
-  const browserProcess = spawn('cmd', ['/c', 'start', '', appConfig.app.shopUrl], {
-    detached: true,
-    stdio: 'ignore',
-  });
+  const { page } = await launchPersistentBrowser(appConfig);
 
-  browserProcess.unref();
+  const productPage = await openShopAndFirstProduct(page, appConfig);
+  console.log('Product opened successfully.');
 
-  console.log('Meesho opened. Windows will reuse your existing logged-in browser if it is already running.');
+  await scrollProductImagesLikeHuman(productPage, appConfig);
+  console.log('Done. Keep the browser window open when you are done.');
 }
 
 main().catch((error) => {
-  console.error('Failed to open Meesho:', error);
+  console.error('Failed:', error.message);
   process.exitCode = 1;
 });

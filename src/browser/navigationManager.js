@@ -140,7 +140,131 @@ class NavigationManager {
     }
   }
 
-  // ── Progress helpers (resume support) ─────────────────────────────────────
+  // ── Dashboard Config & Stats Helpers ─────────────────────────────────────
+
+  get dashboardConfigPath() {
+    return path.join(this.appConfig.projectRoot, 'config', 'dashboard-config.json');
+  }
+
+  get statsFilePath() {
+    return path.join(this.appConfig.projectRoot, 'logs', 'stats.json');
+  }
+
+  get collectedUrlsFilePath() {
+    return path.join(this.appConfig.projectRoot, 'logs', 'collected-urls.json');
+  }
+
+  loadDashboardConfig() {
+    try {
+      if (fs.existsSync(this.dashboardConfigPath)) {
+        return JSON.parse(fs.readFileSync(this.dashboardConfigPath, 'utf8'));
+      }
+    } catch (e) {}
+    return {
+      shopUrls: [this.appConfig.app.shopUrl],
+      speedLevel: 5,
+      imagePauseBase: 500,
+      productPauseBase: 1500,
+      buyNowPauseBase: 3000,
+    };
+  }
+
+  // Calculate speed multiplier based on speedLevel (1 = ultra slow 2.5x, 5 = normal 1x, 10 = robot 0.25x)
+  getSpeedMultiplier(speedLevel = 5) {
+    const clamped = Math.max(1, Math.min(10, speedLevel));
+    // Level 5 = 1.0; Level 1 = 2.5; Level 10 = 0.25
+    if (clamped <= 5) {
+      return 2.5 - ((clamped - 1) / 4) * 1.5;
+    } else {
+      return 1.0 - ((clamped - 5) / 5) * 0.75;
+    }
+  }
+
+  updateStats(partial) {
+    try {
+      const logsDir = path.join(this.appConfig.projectRoot, 'logs');
+      fs.mkdirSync(logsDir, { recursive: true });
+
+      let current = {};
+      if (fs.existsSync(this.statsFilePath)) {
+        try { current = JSON.parse(fs.readFileSync(this.statsFilePath, 'utf8')); } catch (e) {}
+      }
+
+      const updated = {
+        totalProducts: 0,
+        visitedCount: 0,
+        imagesClicked: 0,
+        buyNowCount: 0,
+        continueCount: 0,
+        speedLevel: 5,
+        startTime: this.sessionStartTime || new Date().toISOString(),
+        lastUpdateTime: new Date().toISOString(),
+        currentProductUrl: '',
+        isRunning: true,
+        ...current,
+        ...partial,
+      };
+
+      fs.writeFileSync(this.statsFilePath, JSON.stringify(updated, null, 2));
+    } catch (e) {}
+  }
+
+  get controlFilePath() {
+    return path.join(this.appConfig.projectRoot, 'logs', 'control.json');
+  }
+
+  loadControlState() {
+    try {
+      if (fs.existsSync(this.controlFilePath)) {
+        return JSON.parse(fs.readFileSync(this.controlFilePath, 'utf8'));
+      }
+    } catch (e) {}
+    return { isPaused: false };
+  }
+
+  async checkPauseState(page) {
+    let state = this.loadControlState();
+    if (state.isPaused) {
+      console.log('\n⏸  Automation PAUSED by user. Waiting for Resume...');
+      this.updateStats({ isPaused: true });
+    }
+    while (state.isPaused) {
+      const p = page || this.page;
+      await p.waitForTimeout(1000).catch(() => {});
+      state = this.loadControlState();
+    }
+    this.updateStats({ isPaused: false });
+  }
+
+  loadCollectedUrlsData() {
+    try {
+      if (fs.existsSync(this.collectedUrlsFilePath)) {
+        return JSON.parse(fs.readFileSync(this.collectedUrlsFilePath, 'utf8'));
+      }
+    } catch (e) {}
+    return { shops: [], urls: [] };
+  }
+
+  saveCollectedUrlsGrouped(shopMap) {
+    try {
+      const logsDir = path.join(this.appConfig.projectRoot, 'logs');
+      fs.mkdirSync(logsDir, { recursive: true });
+
+      const shops = Object.keys(shopMap).map((shopUrl) => ({
+        shopUrl,
+        urls: shopMap[shopUrl],
+        total: shopMap[shopUrl].length,
+      }));
+
+      // Also create flat list of all URLs for backward compatibility
+      const allUrls = [].concat(...Object.values(shopMap));
+
+      fs.writeFileSync(
+        this.collectedUrlsFilePath,
+        JSON.stringify({ shops, urls: allUrls, total: allUrls.length, lastUpdated: new Date().toISOString() }, null, 2),
+      );
+    } catch (e) {}
+  }
 
   get progressFilePath() {
     return path.join(this.appConfig.projectRoot, 'logs', 'progress.json');
@@ -171,32 +295,100 @@ class NavigationManager {
   // ── Pagination helper: collect ALL own-shop product URLs across pages ──────
 
   async collectShopProductUrls(maxCount) {
+    const dashCfg = this.loadDashboardConfig();
+    const shopUrls = (dashCfg.shopUrls && dashCfg.shopUrls.length > 0)
+      ? dashCfg.shopUrls
+      : [this.appConfig.app.shopUrl];
+
     const shopLinkSelector = 'a[href*="/p/"][href*="source=Meri"]';
-    const baseShopUrl = this.appConfig.app.shopUrl; // e.g. meesho.com/CJMENTERPRISE?ms=2
+    const shopMap = {};
+    const productUrls = [];
+
+    for (let sIdx = 0; sIdx < shopUrls.length; sIdx++) {
+      const baseShopUrl = shopUrls[sIdx];
+      shopMap[baseShopUrl] = [];
+      let pageNum = 1;
+
+      console.log(`\n[Shop ${sIdx + 1}/${shopUrls.length}] Scanning shop pages (${baseShopUrl}) to collect product URLs...`);
+
+      while (productUrls.length < maxCount) {
+        await this.checkPauseState();
+        const pageUrl = pageNum === 1 ? baseShopUrl : `${baseShopUrl}&page=${pageNum}`;
+        console.log(`  Shop page ${pageNum}: ${pageUrl}`);
+
+        try {
+          await this.page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+          if (pageNum === 1) await this.dismissCommonInterruptions();
+
+          await this.page.locator(shopLinkSelector).first().waitFor({ state: 'visible', timeout: 15000 });
+        } catch {
+          console.log(`  No own-shop products on page ${pageNum}. Reached end of shop.`);
+          break;
+        }
+
+        const allLinks = this.page.locator(shopLinkSelector);
+        const foundOnPage = await allLinks.count();
+        const pageBase = this.page.url();
+
+        let addedOnPage = 0;
+        for (let i = 0; i < foundOnPage && productUrls.length < maxCount; i++) {
+          const href = await allLinks.nth(i).getAttribute('href').catch(() => null);
+          if (href) {
+            const full = new URL(href, pageBase).href;
+            if (!productUrls.includes(full)) {
+              productUrls.push(full);
+              shopMap[baseShopUrl].push(full);
+              addedOnPage++;
+            }
+          }
+        }
+
+        console.log(`  → ${addedOnPage} new URLs added (page total: ${foundOnPage}). Running total: ${productUrls.length}`);
+
+        if (foundOnPage < 20) {
+          console.log('  Reached last page of shop.');
+          break;
+        }
+
+        pageNum++;
+        await this.page.waitForTimeout(500 + Math.floor(Math.random() * 300));
+      }
+    }
+
+    console.log(`Collected ${productUrls.length} total unique product URLs across ${shopUrls.length} shop(s).\n`);
+    this.saveCollectedUrlsGrouped(shopMap);
+    return productUrls;
+  }
+
+  async processShopInTab(targetPage, baseShopUrl, shopIdx, totalShops, maxCount) {
+    const dashCfg = this.loadDashboardConfig();
+    const speedMult = this.speedMult || 1;
+    const shopTag = totalShops > 1 ? `[Tab ${shopIdx + 1}/${totalShops}]` : '';
+
+    console.log(`\n${shopTag} Starting shop scanning: ${baseShopUrl}`);
+
+    const shopLinkSelector = 'a[href*="/p/"][href*="source=Meri"]';
     const productUrls = [];
     let pageNum = 1;
 
-    console.log(`\nScanning shop pages to collect up to ${maxCount} product URLs...`);
-
     while (productUrls.length < maxCount) {
-      // Meesho shop pagination: append &page=N  (page 1 keeps the original URL)
+      await this.checkPauseState(targetPage);
       const pageUrl = pageNum === 1 ? baseShopUrl : `${baseShopUrl}&page=${pageNum}`;
-      console.log(`  Shop page ${pageNum}: ${pageUrl}`);
+      console.log(`${shopTag} Shop page ${pageNum}: ${pageUrl}`);
 
-      await this.page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      if (pageNum === 1) await this.dismissCommonInterruptions();
-
-      // Wait up to 15 s for own-shop products; if none appear, we've passed the last page
       try {
-        await this.page.locator(shopLinkSelector).first().waitFor({ state: 'visible', timeout: 15000 });
+        await targetPage.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        if (pageNum === 1) await this.dismissCommonInterruptions();
+
+        await targetPage.locator(shopLinkSelector).first().waitFor({ state: 'visible', timeout: 15000 });
       } catch {
-        console.log(`  No own-shop products on page ${pageNum}. Reached end of shop.`);
+        console.log(`${shopTag} No own-shop products on page ${pageNum}. Reached end.`);
         break;
       }
 
-      const allLinks = this.page.locator(shopLinkSelector);
+      const allLinks = targetPage.locator(shopLinkSelector);
       const foundOnPage = await allLinks.count();
-      const pageBase = this.page.url();
+      const pageBase = targetPage.url();
 
       let addedOnPage = 0;
       for (let i = 0; i < foundOnPage && productUrls.length < maxCount; i++) {
@@ -210,58 +402,134 @@ class NavigationManager {
         }
       }
 
-      console.log(`  → ${addedOnPage} new URLs added (page total: ${foundOnPage}). Running total: ${productUrls.length}`);
+      console.log(`${shopTag} → ${addedOnPage} new URLs added. Running total: ${productUrls.length}`);
 
-      // Fewer than 20 products on this page means it's the last page
-      if (foundOnPage < 20) {
-        console.log('  Reached last page of shop.');
-        break;
-      }
-
+      if (foundOnPage < 20) break;
       pageNum++;
-      // Small polite pause between shop page loads
-      await this.page.waitForTimeout(600 + Math.floor(Math.random() * 400));
+      await targetPage.waitForTimeout(500 + Math.floor(Math.random() * 300));
     }
 
-    console.log(`Collected ${productUrls.length} unique own-shop product URLs.\n`);
-    return productUrls;
+    console.log(`${shopTag} Collected ${productUrls.length} product URLs.`);
+
+    // Save collected URLs for this shop so the dashboard updates live
+    try {
+      const existing = this.loadCollectedUrlsData() || { shops: [], urls: [] };
+      const shopMap = {};
+      (existing.shops || []).forEach((s) => { shopMap[s.shopUrl] = s.urls; });
+      shopMap[baseShopUrl] = productUrls;
+      this.saveCollectedUrlsGrouped(shopMap);
+    } catch (e) {}
+
+    const visited = this.loadProgress();
+    const pending = productUrls.filter((u) => !visited.includes(u));
+    const sessionVisited = [...visited];
+
+    for (let idx = 0; idx < pending.length; idx++) {
+      await this.checkPauseState(targetPage);
+      const url = pending[idx];
+      console.log(`${shopTag} Product ${idx + 1}/${pending.length}: ${url}`);
+
+      try {
+        await targetPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await this.scrollProductImagesLikeHuman(targetPage);
+        await this.simulateBuyNow(targetPage);
+
+        sessionVisited.push(url);
+        this.saveProgress(sessionVisited);
+
+        const basePause = dashCfg.productPauseBase || 1500;
+        const pauseMs = Math.round((basePause + Math.floor(Math.random() * 1500)) * speedMult);
+        await targetPage.waitForTimeout(pauseMs);
+      } catch (err) {
+        if (err.message.includes('Target page, context or browser has been closed')) return;
+        console.warn(`${shopTag} Skipping product due to error: ${err.message.split('\n')[0]}`);
+      }
+    }
   }
 
   /**
    * Walk every page of the shop, collect own-shop product URLs, then visit each
-   * one with human-like scrolling.
-   *
-   * Resume support: already-visited URLs are stored in logs/progress.json.
-   * If the script is stopped mid-run, the next run skips products already seen.
+   * one with human-like scrolling. Supports serial or parallel multi-tab execution.
    */
   async browseAllProducts(maxCount) {
-    const count = maxCount || this.appConfig.navigation.productCount || 5;
+    this.sessionStartTime = new Date().toISOString();
+    const dashCfg = this.loadDashboardConfig();
+    const speedMult = this.getSpeedMultiplier(dashCfg.speedLevel || 5);
+    this.speedMult = speedMult;
+    this.statsData = {
+      imagesClicked: 0,
+      buyNowCount: 0,
+      continueCount: 0,
+    };
 
-    // ── Step 1: collect all shop product URLs (paginated) ─────────────────────
+    const shopUrls = (dashCfg.shopUrls && dashCfg.shopUrls.length > 0)
+      ? dashCfg.shopUrls
+      : [this.appConfig.app.shopUrl];
+
+    const isParallel = dashCfg.executionMode === 'parallel' && shopUrls.length > 1;
+
+    if (isParallel) {
+      console.log(`\n⚡ Running PARALLEL Mode: Opening ${shopUrls.length} Browser Tabs (1 tab per shop)...`);
+      const context = this.page.context();
+      const tasks = shopUrls.map(async (shopUrl, idx) => {
+        const tab = (idx === 0) ? this.page : await context.newPage();
+        return this.processShopInTab(tab, shopUrl, idx, shopUrls.length, maxCount || 500);
+      });
+
+      await Promise.all(tasks);
+      console.log('\n⚡ All parallel shop tabs completed processing.');
+      this.updateStats({ isRunning: false, currentProductUrl: '' });
+      return;
+    }
+
+    // ── Serial Execution ──────────────────────────────────────────────────────
+    const count = maxCount || this.appConfig.navigation.productCount || 500;
     const allUrls = await this.collectShopProductUrls(count);
+    let visited = this.loadProgress();
 
-    // ── Step 2: load previous progress and filter out already-visited URLs ────
-    const visited = this.loadProgress();
+    // Check if a jumpIndex was explicitly specified in dashboard config
+    const jumpIndex = dashCfg.jumpToIndex || 1;
+    if (jumpIndex > 1 && jumpIndex <= allUrls.length) {
+      console.log(`🎯 Jump to Index requested: Starting from Product #${jumpIndex} (${allUrls[jumpIndex - 1]})`);
+      const skippedUrls = allUrls.slice(0, jumpIndex - 1);
+      visited = Array.from(new Set([...visited, ...skippedUrls]));
+      this.saveProgress(visited);
+    }
+
     const pending = allUrls.filter((u) => !visited.includes(u));
 
+    this.updateStats({
+      totalProducts: allUrls.length,
+      visitedCount: visited.length,
+      speedLevel: dashCfg.speedLevel || 5,
+      isRunning: true,
+    });
+
     if (visited.length > 0) {
-      console.log(`Resume: ${visited.length} already visited, ${pending.length} remaining.\n`);
+      console.log(`Resume/Jump: ${visited.length} marked/visited, ${pending.length} remaining to browse.\n`);
     }
 
     if (pending.length === 0) {
       console.log('All products have been visited. Resetting progress for a fresh run.');
       this.saveProgress([]);
+      this.updateStats({ visitedCount: 0, currentProductUrl: '' });
       return;
     }
 
-    // ── Step 3: visit each pending product ────────────────────────────────────
     const sessionVisited = [...visited];
 
     for (let idx = 0; idx < pending.length; idx++) {
+      await this.checkPauseState();
       const url = pending[idx];
       const overallNum = visited.length + idx + 1;
       console.log(`--- Product ${overallNum} / ${allUrls.length} (this session: ${idx + 1}/${pending.length}) ---`);
       console.log(`Navigating to: ${url}`);
+
+      this.updateStats({
+        visitedCount: sessionVisited.length,
+        currentProductUrl: url,
+        currentProductIndex: overallNum,
+      });
 
       try {
         await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -270,23 +538,26 @@ class NavigationManager {
         await this.scrollProductImagesLikeHuman(this.page);
         await this.simulateBuyNow(this.page);
 
-        // Mark as visited immediately so progress is saved even on partial runs
         sessionVisited.push(url);
         this.saveProgress(sessionVisited);
 
-        // Human-like pause between products (1.5 – 3 s)
-        const pauseMs = 1500 + Math.floor(Math.random() * 1500);
+        this.updateStats({ visitedCount: sessionVisited.length });
+
+        const basePause = dashCfg.productPauseBase || 1500;
+        const pauseMs = Math.round((basePause + Math.floor(Math.random() * 1500)) * speedMult);
         console.log(`Pausing ${pauseMs}ms before next product...\n`);
         await this.page.waitForTimeout(pauseMs);
       } catch (err) {
         if (err.message.includes('Target page, context or browser has been closed')) {
           console.log('\nChrome was closed. Progress saved. Run again to resume.');
+          this.updateStats({ isRunning: false });
           return;
         }
         console.warn(`  Skipping product ${overallNum} due to error: ${err.message.split('\n')[0]}`);
       }
     }
 
+    this.updateStats({ isRunning: false, currentProductUrl: '' });
     console.log(`\nFinished browsing all ${sessionVisited.length} products from the shop.`);
   }
 
@@ -331,8 +602,13 @@ class NavigationManager {
         try {
           await page.mouse.click(x, y);
           console.log(`  Image ${i + 1}/${thumbCoords.length} clicked`);
+          if (this.statsData) {
+            this.statsData.imagesClicked = (this.statsData.imagesClicked || 0) + 1;
+            this.updateStats({ imagesClicked: this.statsData.imagesClicked });
+          }
           // Wait for the main image to visibly update
-          await page.waitForTimeout(500 + Math.floor(Math.random() * 300));
+          const imgPause = (dashCfg && dashCfg.imagePauseBase) || 500;
+          await page.waitForTimeout(Math.round((imgPause + Math.floor(Math.random() * 300)) * (this.speedMult || 1)));
         } catch (e) {
           // ignore individual click failures
         }
@@ -347,7 +623,7 @@ class NavigationManager {
       await page.evaluate(() => {
         window.scrollBy({ top: 300, behavior: 'smooth' });
       }).catch(() => {});
-      await page.waitForTimeout(280);
+      await page.waitForTimeout(Math.round(280 * (this.speedMult || 1)));
     }
 
     // Scroll back to top
@@ -422,49 +698,54 @@ class NavigationManager {
   // No order is ever placed — the next product’s goto() abandons payment page.
   async simulateBuyNow(page) {
     try {
+      const dashCfg = this.loadDashboardConfig();
+      const speedMult = this.speedMult || 1;
+      const buyNowBase = (dashCfg && dashCfg.buyNowPauseBase) || 800;
+
       await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' })).catch(() => {});
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(Math.round(100 * speedMult));
 
       const buyNowBtn = page.locator('button:has-text("Buy Now"), button:has-text("Buy now")').first();
-      if (!await buyNowBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+      if (!await buyNowBtn.isVisible({ timeout: Math.round(3000 * speedMult) }).catch(() => false)) {
         console.log('  Buy Now button not found — skipping checkout step.');
         return;
       }
 
       await buyNowBtn.scrollIntoViewIfNeeded().catch(() => {});
-      await page.waitForTimeout(200);
       await buyNowBtn.click();
       console.log('  Clicked Buy Now.');
+      if (this.statsData) {
+        this.statsData.buyNowCount = (this.statsData.buyNowCount || 0) + 1;
+        this.updateStats({ buyNowCount: this.statsData.buyNowCount });
+      }
 
-      // Wait for navigation (Buy Now always navigates away from the product page)
-      await page.waitForTimeout(3000);
+      // Dynamic wait for review page
+      await page.waitForURL((url) => url.href.includes('/mcheckout/review') || url.href.includes('/auth'), { timeout: 6000 }).catch(() => {});
       const landedUrl = page.url();
 
-      // If Meesho redirected to login, the session is not authenticated
       if (landedUrl.includes('/auth')) {
         console.log('  Buy Now redirected to login — session not logged in. Skipping.');
         return;
       }
 
       if (!landedUrl.includes('/mcheckout/review')) {
-        console.log(`  Buy Now: unexpected page (${landedUrl.split('?')[0]}). Skipping.`);
+        console.log(`  Buy Now: landed on ${landedUrl.split('?')[0]}. Continuing.`);
         return;
       }
 
-      await page.waitForLoadState('domcontentloaded').catch(() => {});
-      await page.waitForTimeout(1000);
-      console.log('  On review page. (“Continue” will not deduct money)');
-
-      // Click Continue → payment page; money is NOT deducted here
+      console.log('  On review page. Clicking Continue...');
       const continueBtn = page.locator('button:has-text("Continue")').first();
-      if (await continueBtn.isVisible({ timeout: 6000 }).catch(() => false)) {
+      if (await continueBtn.isVisible({ timeout: Math.round(3000 * speedMult) }).catch(() => false)) {
         await continueBtn.click();
-        await page.waitForTimeout(2500);
-        console.log('  Reached payment page. Stopping here (no order placed).');
+        console.log('  Clicked Continue.');
+        if (this.statsData) {
+          this.statsData.continueCount = (this.statsData.continueCount || 0) + 1;
+          this.updateStats({ continueCount: this.statsData.continueCount });
+        }
+        await page.waitForTimeout(Math.round(buyNowBase * speedMult));
       } else {
         console.log('  Continue button not found on review page.');
       }
-      // Next product’s goto() navigates away from payment page safely.
     } catch (err) {
       if (err.message.includes('Target page, context or browser has been closed')) throw err;
       console.warn(`  Buy Now flow issue: ${err.message.split('\n')[0]}`);

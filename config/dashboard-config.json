@@ -1,0 +1,12 @@
+{
+  "shopUrls": [
+    "https://www.meesho.com/BHAVANIENTERPRISELIMITED?ms=2",
+    "https://www.meesho.com/CJMENTERPRISE?ms=2"
+  ],
+  "speedLevel": 5,
+  "imagePauseBase": 200,
+  "productPauseBase": 1500,
+  "buyNowPauseBase": 3000,
+  "executionMode": "parallel",
+  "jumpToIndex": 1
+}

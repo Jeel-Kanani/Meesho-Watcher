@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meesho Watcher — Automation Control Panel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0b0c10;
+      --card-bg: rgba(22, 25, 35, 0.85);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --primary: #9c27b0;
+      --primary-gradient: linear-gradient(135deg, #9c27b0 0%, #e91e63 100%);
+      --accent-cyan: #00f2fe;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-red: #ef4444;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --radius: 16px;
+      --shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+    
+    body {
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(156, 39, 176, 0.15) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(233, 30, 99, 0.12) 0%, transparent 40%);
+      color: var(--text-main);
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* Top Bar */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(12px);
+      padding: 16px 28px;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .logo-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .logo-icon {
+      width: 44px;
+      height: 44px;
+      background: var(--primary-gradient);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 22px;
+      color: white;
+      box-shadow: 0 4px 15px rgba(233, 30, 99, 0.4);
+    }
+
+    .logo-text h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(to right, #ffffff, #d1d5db);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .logo-text p {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      border-radius: 30px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background-color: var(--accent-amber);
+    }
+
+    .dot.running {
+      background-color: var(--accent-green);
+      box-shadow: 0 0 10px var(--accent-green);
+      animation: pulse 1.5s infinite;
+    }
+
+    .dot.paused {
+      background-color: var(--accent-amber);
+      box-shadow: 0 0 10px var(--accent-amber);
+    }
+
+    .dot.idle {
+      background-color: var(--text-muted);
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+
+    /* Grid Layout */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 950px) {
+      .dashboard-grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(16px);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #e5e7eb;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .card-title svg {
+      width: 20px;
+      height: 20px;
+      color: var(--primary);
+    }
+
+    /* Stats Grid with 5 columns */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 1100px) {
+      .stats-row { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    @media (max-width: 700px) {
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .stat-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(156, 39, 176, 0.4);
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .stat-val {
+      font-size: 22px;
+      font-weight: 700;
+      color: #ffffff;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .stat-sub {
+      font-size: 11px;
+      color: var(--accent-cyan);
+    }
+
+    .mode-selector {
+      display: flex;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 4px;
+      border-radius: 12px;
+      border: 1px solid var(--card-border);
+      gap: 4px;
+    }
+
+    .mode-btn {
+      flex: 1;
+      padding: 10px 14px;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .mode-btn.active {
+      background: var(--primary-gradient);
+      color: white;
+      box-shadow: 0 4px 12px rgba(156, 39, 176, 0.4);
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .form-group label {
+      font-size: 13px;
+      font-weight: 500;
+      color: #d1d5db;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .slider-container {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      outline: none;
+      -webkit-appearance: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--primary-gradient);
+      box-shadow: 0 0 10px rgba(233, 30, 99, 0.6);
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+
+    .speed-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 0 4px;
+    }
+
+    .url-input-group {
+      display: flex;
+      gap: 10px;
+    }
+
+    input[type="text"], input[type="number"], select {
+      background: #141622;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      color: #f3f4f6;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    select option {
+      background-color: #141622;
+      color: #ffffff;
+      padding: 10px;
+    }
+
+    input[type="text"]:focus, input[type="number"]:focus, select:focus {
+      border-color: var(--primary);
+    }
+
+    .url-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+
+    .url-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      border: 1px solid var(--card-border);
+    }
+
+    .url-item span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 85%;
+    }
+
+    .btn-remove {
+      background: none;
+      border: none;
+      color: var(--accent-red);
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    /* Action Buttons */
+    .action-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      border: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+
+    .btn-primary {
+      background: var(--primary-gradient);
+      color: white;
+      box-shadow: 0 4px 15px rgba(156, 39, 176, 0.4);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(156, 39, 176, 0.6);
+    }
+
+    .btn-warning {
+      background: rgba(245, 158, 11, 0.2);
+      color: #fcd34d;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+    }
+
+    .btn-warning:hover {
+      background: rgba(245, 158, 11, 0.35);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: white;
+      border: 1px solid var(--card-border);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+    }
+
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.3);
+    }
+
+    .jump-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--card-border);
+    }
+
+    /* Data Table / Sheet view */
+    .sheet-card {
+      grid-column: span 2;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(16px);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    @media (max-width: 950px) {
+      .sheet-card { grid-column: span 1; }
+    }
+
+    .sheet-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .filter-tabs {
+      display: flex;
+      gap: 8px;
+    }
+
+    .tab-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .tab-btn.active {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
+
+    .table-wrapper {
+      max-height: 320px;
+      overflow-y: auto;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      text-align: left;
+    }
+
+    th {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-muted);
+      padding: 12px 14px;
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      backdrop-filter: blur(8px);
+    }
+
+    td {
+      padding: 12px 14px;
+      border-top: 1px solid var(--card-border);
+      color: #e5e7eb;
+    }
+
+    tr:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .badge-visited {
+      background: rgba(16, 185, 129, 0.15);
+      color: #6ee7b7;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .badge-pending {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fde68a;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    /* Terminal Log */
+    .terminal-container {
+      grid-column: span 2;
+      background: #050608;
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    @media (max-width: 950px) {
+      .terminal-container { grid-column: span 1; }
+    }
+
+    .terminal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 8px;
+    }
+
+    .terminal-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .terminal-body {
+      height: 220px;
+      overflow-y: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #38edf8;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .log-err { color: #f87171; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="logo-group">
+        <div class="logo-icon">M</div>
+        <div class="logo-text">
+          <h1>Meesho Watcher Dashboard</h1>
+          <p>Real-Time Store Product Browsing & Engagement Automation</p>
+        </div>
+      </div>
+      <div class="status-pill">
+        <div id="statusDot" class="dot idle"></div>
+        <span id="statusText">System Idle</span>
+      </div>
+    </header>
+
+    <!-- Top Stats Row (5 Cards including ETA Calculator) -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <span class="stat-label">Products Visited</span>
+        <span class="stat-val" id="statProducts">0 / 0</span>
+        <span class="stat-sub" id="statProductSub">0% complete</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Images Clicked</span>
+        <span class="stat-val" id="statImages">0</span>
+        <span class="stat-sub">Thumbnail gallery views</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Buy Now Action</span>
+        <span class="stat-val" id="statBuyNow">0</span>
+        <span class="stat-sub">Intent signal triggers</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Continue Step</span>
+        <span class="stat-val" id="statContinue">0</span>
+        <span class="stat-sub">Review step conversions</span>
+      </div>
+      <!-- Smart Time Calculator Card -->
+      <div class="stat-card" style="border-color: rgba(0, 242, 254, 0.3);">
+        <span class="stat-label">Estimated Time (ETA)</span>
+        <span class="stat-val" id="statEta" style="color: var(--accent-cyan);">--:--</span>
+        <span class="stat-sub" id="statEtaSub">Calculated live</span>
+      </div>
+    </div>
+
+    <!-- Dashboard Controls Grid -->
+    <div class="dashboard-grid">
+      <!-- Left Card: Speed & Automation Sliders -->
+      <div class="card">
+        <div class="card-title">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          Speed & Automation Profile
+        </div>
+
+        <div class="slider-container">
+          <div class="slider-header">
+            <span>Human ↔ Robot Mode Slider</span>
+            <strong id="speedValText" style="color: var(--primary);">Level 5 (Balanced 1.0x)</strong>
+          </div>
+          <input type="range" id="speedSlider" min="1" max="10" value="5">
+          <div class="speed-labels">
+            <span>🐢 Ultra Human (1)</span>
+            <span>⚡ Balanced (5)</span>
+            <span>🤖 Robot (10)</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Image Switch Pause: <span id="imgPauseVal">500 ms</span></label>
+          <input type="range" id="imgPauseSlider" min="200" max="2000" step="50" value="500">
+        </div>
+
+        <div class="form-group">
+          <label>Product Delay: <span id="prodPauseVal">1500 ms</span></label>
+          <input type="range" id="prodPauseSlider" min="500" max="5000" step="100" value="1500">
+        </div>
+
+        <div class="form-group">
+          <label>Buy Now / Checkout Delay: <span id="buyNowPauseVal">800 ms</span></label>
+          <input type="range" id="buyNowPauseSlider" min="200" max="3000" step="50" value="800">
+        </div>
+
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn btn-primary" style="flex:1; background: linear-gradient(135deg, #ef4444 0%, #ec4899 100%); box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);" onclick="activateTurboPeakMode()">
+            🚀 TURBO PEAK MODE (Ultra Fast)
+          </button>
+          <button class="btn btn-secondary" onclick="saveConfig()">Save Settings</button>
+          <button class="btn btn-warning" onclick="resetSpeedConfig()">🔄 Reset Default</button>
+        </div>
+      </div>
+
+      <!-- Right Card: Shop URLs & Execution Mode -->
+      <div class="card">
+        <div class="card-title">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+          Target Shops & Controls
+        </div>
+
+        <!-- Serial vs Parallel Toggle -->
+        <div class="form-group">
+          <label>Execution Strategy:</label>
+          <div class="mode-selector">
+            <button class="mode-btn active" id="btnModeSerial" onclick="setExecutionMode('serial')">
+              🔗 Serial (Single-Window)
+            </button>
+            <button class="mode-btn" id="btnModeParallel" onclick="setExecutionMode('parallel')">
+              ⚡ Parallel (Multi-Tab)
+            </button>
+          </div>
+        </div>
+
+        <div class="url-input-group">
+          <input type="text" id="newShopUrl" placeholder="https://www.meesho.com/YOURSHOP?ms=2" style="flex:1;">
+          <button class="btn btn-secondary" onclick="addShopUrl()">Add Shop</button>
+        </div>
+
+        <div class="url-list" id="urlList">
+          <!-- Dynamic shop URLs -->
+        </div>
+
+        <!-- Jump Control -->
+        <div class="jump-group">
+          <span style="font-size:12px; color:var(--text-muted);">Jump to Product #:</span>
+          <input type="number" id="jumpIndex" value="1" min="1" style="width:65px; padding:6px 10px;">
+          <button class="btn btn-secondary" onclick="startJump()" style="padding: 6px 12px; font-size:12px;">🎯 Jump & Start</button>
+        </div>
+
+        <!-- Action buttons including Live Pause / Resume -->
+        <div class="action-row">
+          <button class="btn btn-primary" id="btnStart" onclick="startRun('resume')">
+            ▶ Start / Resume
+          </button>
+          <button class="btn btn-warning" id="btnPause" onclick="togglePause()">
+            ⏸ Pause Script
+          </button>
+          <button class="btn btn-secondary" id="btnFresh" onclick="startRun('fresh')">
+            🔄 Fresh Start (0)
+          </button>
+          <button class="btn btn-danger" id="btnStop" onclick="stopRun()">
+            ⏹ Stop Process
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Product Catalog Sheet View -->
+    <div class="sheet-card">
+      <div class="sheet-header">
+        <div style="display:flex; align-items:center; gap:16px;">
+          <div class="card-title">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            Product Catalog Sheet
+          </div>
+
+          <!-- Shop Selector Dropdown for separate shop sheets -->
+          <div style="display:flex; align-items:center; gap:8px;">
+            <label style="font-size:12px; color:var(--text-muted); font-weight:500;">Select Shop Sheet:</label>
+            <select id="sheetShopSelect" style="padding:4px 10px; font-size:12px;" onchange="onShopSheetChange()">
+              <option value="">All Shops</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:12px; align-items:center;">
+          <input type="text" id="sheetSearch" placeholder="Search products..." style="padding:6px 12px; font-size:12px;" oninput="renderSheetTable()">
+          <div class="filter-tabs">
+            <button class="tab-btn active" id="tabAll" onclick="setSheetFilter('all')">All (<span id="cntAll">0</span>)</button>
+            <button class="tab-btn" id="tabVisited" onclick="setSheetFilter('visited')">Visited (<span id="cntVisited">0</span>)</button>
+            <button class="tab-btn" id="tabPending" onclick="setSheetFilter('pending')">Pending (<span id="cntPending">0</span>)</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 50px;">#</th>
+              <th>Product Title</th>
+              <th>Product Code</th>
+              <th style="width: 110px;">Status</th>
+              <th style="width: 140px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="sheetTableBody">
+            <tr><td colspan="5" style="text-align:center; color:var(--text-muted);">Loading product catalog sheet...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Live Terminal Stream -->
+    <div class="terminal-container">
+      <div class="terminal-header">
+        <span class="terminal-title">LIVE LOG STREAM</span>
+        <button class="btn btn-secondary" style="padding:4px 10px; font-size:11px;" onclick="clearLogs()">Clear</button>
+      </div>
+      <div class="terminal-body" id="termLogs">Connecting live log stream...</div>
+    </div>
+  </div>
+
+  <script>
+    let currentConfig = {};
+    let currentStats = {};
+    let catalogItems = [];
+    let isPausedState = false;
+    let activeFilter = 'all';
+    let selectedShopFilter = '';
+    let ws = null;
+
+    async function fetchConfig() {
+      const res = await fetch('/api/config');
+      currentConfig = await res.json();
+      renderConfig();
+      fetchProducts();
+    }
+
+    async function fetchProducts() {
+      try {
+        const query = selectedShopFilter ? `?shopUrl=${encodeURIComponent(selectedShopFilter)}` : '';
+        const res = await fetch(`/api/products${query}`);
+        const data = await res.json();
+
+        catalogItems = data.items || [];
+        document.getElementById('cntAll').innerText = data.total || 0;
+        document.getElementById('cntVisited').innerText = data.visitedCount || 0;
+        document.getElementById('cntPending').innerText = data.pendingCount || 0;
+
+        // Render Shop Selector Dropdown options
+        const shopSelect = document.getElementById('sheetShopSelect');
+        const availableShops = (data.shops && data.shops.length > 0) ? data.shops : (currentConfig.shopUrls || []);
+        
+        shopSelect.innerHTML = '<option value="">All Shops</option>' + 
+          availableShops.map((sUrl, i) => {
+            const shopName = sUrl.split('/')[3] ? sUrl.split('/')[3].split('?')[0] : `Shop ${i + 1}`;
+            return `<option value="${sUrl}" ${sUrl === selectedShopFilter ? 'selected' : ''}>Shop ${i + 1}: ${shopName}</option>`;
+          }).join('');
+
+        renderSheetTable();
+        calculateETA();
+      } catch (e) {}
+    }
+
+    function onShopSheetChange() {
+      selectedShopFilter = document.getElementById('sheetShopSelect').value;
+      fetchProducts();
+    }
+
+    function renderConfig() {
+      document.getElementById('speedSlider').value = currentConfig.speedLevel || 5;
+      updateSpeedLabel(currentConfig.speedLevel || 5);
+      document.getElementById('imgPauseSlider').value = currentConfig.imagePauseBase || 500;
+      document.getElementById('imgPauseVal').innerText = (currentConfig.imagePauseBase || 500) + ' ms';
+      document.getElementById('prodPauseSlider').value = currentConfig.productPauseBase || 1500;
+      document.getElementById('prodPauseVal').innerText = (currentConfig.productPauseBase || 1500) + ' ms';
+      document.getElementById('buyNowPauseSlider').value = currentConfig.buyNowPauseBase || 800;
+      document.getElementById('buyNowPauseVal').innerText = (currentConfig.buyNowPauseBase || 800) + ' ms';
+
+      setExecutionModeUI(currentConfig.executionMode || 'serial');
+
+      const urlList = document.getElementById('urlList');
+      urlList.innerHTML = '';
+      (currentConfig.shopUrls || []).forEach((u, i) => {
+        const item = document.createElement('div');
+        item.className = 'url-item';
+        item.innerHTML = `<span>Shop ${i + 1}: ${u}</span> <button class="btn-remove" onclick="removeShopUrl(${i})">✕</button>`;
+        urlList.appendChild(item);
+      });
+      calculateETA();
+    }
+
+    function setExecutionModeUI(mode) {
+      currentConfig.executionMode = mode;
+      document.getElementById('btnModeSerial').classList.toggle('active', mode === 'serial');
+      document.getElementById('btnModeParallel').classList.toggle('active', mode === 'parallel');
+    }
+
+    function setExecutionMode(mode) {
+      setExecutionModeUI(mode);
+      saveConfig();
+    }
+
+    function updateSpeedLabel(val) {
+      const txt = document.getElementById('speedValText');
+      if (val <= 3) txt.innerText = `Level ${val} (Slow / Ultra-Human)`;
+      else if (val <= 6) txt.innerText = `Level ${val} (Balanced 1.0x)`;
+      else txt.innerText = `Level ${val} (Fast / Robot Mode)`;
+    }
+
+    document.getElementById('speedSlider').oninput = (e) => { updateSpeedLabel(e.target.value); calculateETA(); };
+    document.getElementById('imgPauseSlider').oninput = (e) => { document.getElementById('imgPauseVal').innerText = e.target.value + ' ms'; calculateETA(); };
+    document.getElementById('prodPauseSlider').oninput = (e) => { document.getElementById('prodPauseVal').innerText = e.target.value + ' ms'; calculateETA(); };
+    document.getElementById('buyNowPauseSlider').oninput = (e) => { document.getElementById('buyNowPauseVal').innerText = e.target.value + ' ms'; calculateETA(); };
+
+    async function saveConfig() {
+      currentConfig.speedLevel = parseInt(document.getElementById('speedSlider').value, 10);
+      currentConfig.imagePauseBase = parseInt(document.getElementById('imgPauseSlider').value, 10);
+      currentConfig.productPauseBase = parseInt(document.getElementById('prodPauseSlider').value, 10);
+      currentConfig.buyNowPauseBase = parseInt(document.getElementById('buyNowPauseSlider').value, 10);
+
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentConfig)
+      });
+      calculateETA();
+    }
+
+    async function activateTurboPeakMode() {
+      currentConfig.speedLevel = 10;
+      currentConfig.imagePauseBase = 200;
+      currentConfig.productPauseBase = 500;
+      currentConfig.buyNowPauseBase = 200;
+      currentConfig.executionMode = 'parallel';
+
+      document.getElementById('speedSlider').value = 10;
+      document.getElementById('imgPauseSlider').value = 200;
+      document.getElementById('prodPauseSlider').value = 500;
+      document.getElementById('buyNowPauseSlider').value = 200;
+
+      document.getElementById('imgPauseVal').innerText = '200 ms';
+      document.getElementById('prodPauseVal').innerText = '500 ms';
+      document.getElementById('buyNowPauseVal').innerText = '200 ms';
+      updateSpeedLabel(10);
+      setExecutionModeUI('parallel');
+
+      await saveConfig();
+      alert('🚀 TURBO PEAK MODE ACTIVATED! (Max Speed + Multi-Tab Parallel Enabled)');
+    }
+
+    function calculateETA() {
+      const total = currentStats.totalProducts || catalogItems.length || 0;
+      const visited = currentStats.visitedCount || 0;
+      const remaining = Math.max(0, total - visited);
+
+      if (remaining === 0) {
+        document.getElementById('statEta').innerText = 'Done ✓';
+        document.getElementById('statEtaSub').innerText = 'All items visited';
+        return;
+      }
+
+      const speedLevel = parseInt(document.getElementById('speedSlider').value, 10) || 5;
+      const imgPause = parseInt(document.getElementById('imgPauseSlider').value, 10) || 500;
+      const prodPause = parseInt(document.getElementById('prodPauseSlider').value, 10) || 1500;
+
+      let mult = 1.0;
+      if (speedLevel <= 5) mult = 2.5 - ((speedLevel - 1) / 4) * 1.5;
+      else mult = 1.0 - ((speedLevel - 5) / 5) * 0.75;
+
+      const perProdMs = (imgPause * 6 + 1200 + prodPause) * mult;
+      
+      const shopCount = (currentConfig.shopUrls || []).length || 1;
+      const isParallel = currentConfig.executionMode === 'parallel' && shopCount > 1;
+      const effectiveTabs = isParallel ? shopCount : 1;
+
+      const totalSeconds = Math.round((remaining * perProdMs / 1000) / effectiveTabs);
+
+      const hrs = Math.floor(totalSeconds / 3600);
+      const mins = Math.floor((totalSeconds % 3600) / 60);
+      const secs = totalSeconds % 60;
+
+      let fmt = '';
+      if (hrs > 0) fmt = `${hrs}h ${mins}m ${secs}s`;
+      else if (mins > 0) fmt = `${mins}m ${secs}s`;
+      else fmt = `${secs}s`;
+
+      document.getElementById('statEta').innerText = `~ ${fmt}`;
+      document.getElementById('statEtaSub').innerText = `${isParallel ? '⚡ Parallel (' + shopCount + ' tabs)' : '🔗 Serial (1 tab)'} @ L${speedLevel}`;
+    }
+
+    async function addShopUrl() {
+      const val = document.getElementById('newShopUrl').value.trim();
+      if (!val) return;
+      currentConfig.shopUrls = currentConfig.shopUrls || [];
+      if (!currentConfig.shopUrls.includes(val)) {
+        currentConfig.shopUrls.push(val);
+      }
+      document.getElementById('newShopUrl').value = '';
+      await saveConfig();
+      renderConfig();
+      await fetchProducts();
+    }
+
+    async function removeShopUrl(idx) {
+      currentConfig.shopUrls.splice(idx, 1);
+      await saveConfig();
+      renderConfig();
+      await fetchProducts();
+    }
+
+    function setSheetFilter(filter) {
+      activeFilter = filter;
+      document.getElementById('tabAll').classList.toggle('active', filter === 'all');
+      document.getElementById('tabVisited').classList.toggle('active', filter === 'visited');
+      document.getElementById('tabPending').classList.toggle('active', filter === 'pending');
+      renderSheetTable();
+    }
+
+    function renderSheetTable() {
+      const search = document.getElementById('sheetSearch').value.toLowerCase().trim();
+      const body = document.getElementById('sheetTableBody');
+
+      const filtered = catalogItems.filter((item) => {
+        if (activeFilter === 'visited' && !item.visited) return false;
+        if (activeFilter === 'pending' && item.visited) return false;
+        if (search && !item.title.toLowerCase().includes(search) && !item.url.toLowerCase().includes(search)) return false;
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        body.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding: 20px;">No product links match the selected filter.</td></tr>`;
+        return;
+      }
+
+      body.innerHTML = filtered.map((item) => `
+        <tr>
+          <td><strong>${item.index}</strong></td>
+          <td><div style="font-weight:600; max-width:340px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.title}</div></td>
+          <td><span style="font-family:'JetBrains Mono'; color:var(--accent-cyan);">${item.pid || 'N/A'}</span></td>
+          <td>
+            ${item.visited 
+              ? '<span class="badge badge-visited">✓ Visited</span>' 
+              : '<span class="badge badge-pending">⏳ Pending</span>'}
+          </td>
+          <td>
+            <button class="btn btn-secondary" style="padding:4px 10px; font-size:11px;" onclick="jumpToProduct(${item.index})">🎯 Jump & Start</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function jumpToProduct(idx) {
+      document.getElementById('jumpIndex').value = idx;
+      await saveConfig();
+      await fetch('/api/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'jump', jumpToIndex: idx })
+      });
+    }
+
+    async function startJump() {
+      const idx = parseInt(document.getElementById('jumpIndex').value, 10) || 1;
+      await jumpToProduct(idx);
+    }
+
+    async function togglePause() {
+      if (isPausedState) {
+        await fetch('/api/resume-control', { method: 'POST' });
+      } else {
+        await fetch('/api/pause', { method: 'POST' });
+      }
+    }
+
+    async function startRun(mode) {
+      await saveConfig();
+      await fetch('/api/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
+      });
+    }
+
+    async function stopRun() {
+      await fetch('/api/stop', { method: 'POST' });
+    }
+
+    function clearLogs() {
+      document.getElementById('termLogs').innerText = '';
+    }
+
+    function connectWS() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+      ws.onopen = () => {
+        appendLog('\n--- Connected to Live Server Stream ---\n');
+      };
+
+      ws.onmessage = (evt) => {
+        const data = JSON.parse(evt.data);
+        if (data.type === 'log') {
+          appendLog(data.text, data.isError);
+          fetchProducts();
+        } else if (data.type === 'status') {
+          updateStatus(data.running);
+        } else if (data.type === 'stats') {
+          updateStatsUI(data);
+        } else if (data.type === 'control') {
+          updatePauseUI(data.isPaused);
+        }
+      };
+
+      ws.onclose = () => {
+        updateStatus(false);
+        setTimeout(connectWS, 3000);
+      };
+    }
+
+    function updatePauseUI(isPaused) {
+      isPausedState = isPaused;
+      const btn = document.getElementById('btnPause');
+      const dot = document.getElementById('statusDot');
+      const txt = document.getElementById('statusText');
+
+      if (isPaused) {
+        btn.innerText = '▶ Resume Script';
+        btn.className = 'btn btn-primary';
+        dot.className = 'dot paused';
+        txt.innerText = 'Automation Paused';
+      } else {
+        btn.innerText = '⏸ Pause Script';
+        btn.className = 'btn btn-warning';
+      }
+    }
+
+    function updateStatus(running) {
+      const dot = document.getElementById('statusDot');
+      const txt = document.getElementById('statusText');
+      if (running) {
+        if (!isPausedState) {
+          dot.className = 'dot running';
+          txt.innerText = 'Automation Running';
+        }
+      } else {
+        dot.className = 'dot idle';
+        txt.innerText = 'System Idle';
+      }
+    }
+
+    function updateStatsUI(s) {
+      currentStats = s;
+      const total = s.totalProducts || 0;
+      const visited = s.visitedCount || 0;
+      document.getElementById('statProducts').innerText = `${visited} / ${total}`;
+      const pct = total > 0 ? Math.round((visited / total) * 100) : 0;
+      document.getElementById('statProductSub').innerText = `${pct}% complete ${s.currentProductIndex ? '(Current #' + s.currentProductIndex + ')' : ''}`;
+
+      document.getElementById('statImages').innerText = s.imagesClicked || 0;
+      document.getElementById('statBuyNow').innerText = s.buyNowCount || 0;
+      document.getElementById('statContinue').innerText = s.continueCount || 0;
+
+      if (s.isPaused !== undefined) {
+        updatePauseUI(s.isPaused);
+      }
+
+      calculateETA();
+    }
+
+    function appendLog(msg, isErr) {
+      const body = document.getElementById('termLogs');
+      const span = document.createElement('span');
+      if (isErr) span.className = 'log-err';
+      span.innerText = msg;
+      body.appendChild(span);
+      body.scrollTop = body.scrollHeight;
+    }
+
+    fetchConfig();
+    connectWS();
+  </script>
+</body>
+</html>

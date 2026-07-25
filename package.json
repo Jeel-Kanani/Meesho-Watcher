@@ -3,9 +3,11 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "bin": "server.js",
   "scripts": {
     "start": "node index.js",
-    "dashboard": "node server.js"
+    "dashboard": "node server.js",
+    "build:exe": "npx @yao-pkg/pkg server.js --targets node18-win-x64 --output Meesho-Watcher.exe"
   },
   "keywords": [],
   "author": "",

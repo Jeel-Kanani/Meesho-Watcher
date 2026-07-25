@@ -700,27 +700,30 @@ class NavigationManager {
     try {
       const dashCfg = this.loadDashboardConfig();
       const speedMult = this.speedMult || 1;
-      const buyNowBase = (dashCfg && dashCfg.buyNowPauseBase) || 800;
+      const buyNowBase = (dashCfg && dashCfg.buyNowPauseBase) || 1200;
 
       await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' })).catch(() => {});
-      await page.waitForTimeout(Math.round(100 * speedMult));
+      // Polite pause before clicking Buy Now
+      await page.waitForTimeout(Math.round(400 * speedMult));
 
       const buyNowBtn = page.locator('button:has-text("Buy Now"), button:has-text("Buy now")').first();
-      if (!await buyNowBtn.isVisible({ timeout: Math.round(3000 * speedMult) }).catch(() => false)) {
+      if (!await buyNowBtn.isVisible({ timeout: Math.round(4000 * speedMult) }).catch(() => false)) {
         console.log('  Buy Now button not found — skipping checkout step.');
         return;
       }
 
       await buyNowBtn.scrollIntoViewIfNeeded().catch(() => {});
+      await page.waitForTimeout(Math.round(250 * speedMult));
       await buyNowBtn.click();
       console.log('  Clicked Buy Now.');
+
       if (this.statsData) {
         this.statsData.buyNowCount = (this.statsData.buyNowCount || 0) + 1;
         this.updateStats({ buyNowCount: this.statsData.buyNowCount });
       }
 
-      // Dynamic wait for review page
-      await page.waitForURL((url) => url.href.includes('/mcheckout/review') || url.href.includes('/auth'), { timeout: 6000 }).catch(() => {});
+      // Wait for review page navigation
+      await page.waitForURL((url) => url.href.includes('/mcheckout/review') || url.href.includes('/auth'), { timeout: 8000 }).catch(() => {});
       const landedUrl = page.url();
 
       if (landedUrl.includes('/auth')) {
@@ -733,15 +736,19 @@ class NavigationManager {
         return;
       }
 
+      // Smooth pause on review page before clicking Continue
+      await page.waitForTimeout(Math.round(750 * speedMult));
       console.log('  On review page. Clicking Continue...');
+
       const continueBtn = page.locator('button:has-text("Continue")').first();
-      if (await continueBtn.isVisible({ timeout: Math.round(3000 * speedMult) }).catch(() => false)) {
+      if (await continueBtn.isVisible({ timeout: Math.round(4000 * speedMult) }).catch(() => false)) {
         await continueBtn.click();
         console.log('  Clicked Continue.');
         if (this.statsData) {
           this.statsData.continueCount = (this.statsData.continueCount || 0) + 1;
           this.updateStats({ continueCount: this.statsData.continueCount });
         }
+        // Smooth pause on payment page before navigating away
         await page.waitForTimeout(Math.round(buyNowBase * speedMult));
       } else {
         console.log('  Continue button not found on review page.');
